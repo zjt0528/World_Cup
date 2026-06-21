@@ -69,7 +69,32 @@
   .muted{color:var(--muted)}
   .vs{color:var(--muted);padding:0 4px}
   .scoregrp{display:inline-flex;align-items:center}
+  .kofit{position:relative;width:100%;overflow:hidden}
+  .kowrap{display:flex;overflow-x:auto;padding:2px 0 14px;align-items:stretch}
+  .koround{flex:0 0 auto;min-width:116px;padding:0 5px;display:flex;flex-direction:column}
+  .koround-t{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);font-weight:700;text-align:center;padding-bottom:7px}
+  .korbody{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:7px}
+  .komatch{background:linear-gradient(180deg,#212d3e,#1a2230);border:1px solid var(--line);border-radius:7px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:border-color .15s}
+  .komatch:hover{border-color:#3a4b61}
+  .koteam{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:4px 7px;font-size:10.5px;color:var(--muted)}
+  .koteam+.koteam{border-top:1px solid var(--line)}
+  .koteam .kon{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .koteam .kosc{flex:none;min-width:12px;text-align:center;font-variant-numeric:tabular-nums;font-weight:700}
+  .koteam.kowin{color:var(--txt);font-weight:700;background:rgba(61,220,151,.09);box-shadow:inset 3px 0 0 var(--accent)}
+  .koteam.kowin .kosc{color:var(--accent)}
+  .kocap{padding:2px 7px;font-size:8.5px;color:var(--muted);text-align:center;border-top:1px dashed var(--line);letter-spacing:.2px}
+  /* center Final column */
+  .koround.kocenter{justify-content:center}
+  .koround.kocenter .korbody{justify-content:center;gap:10px;flex:none;margin:auto 0}
+  .kocenter .korbody>.komatch{border-color:rgba(255,210,74,.55);box-shadow:0 0 0 1px rgba(255,210,74,.22),0 3px 10px rgba(0,0,0,.32)}
+  .kocenter .korbody>.komatch .koteam.kowin{background:rgba(255,210,74,.1);box-shadow:inset 3px 0 0 var(--gold)}
+  .kocenter .korbody>.komatch .koteam.kowin .kosc{color:var(--gold)}
+  .kothird{margin-top:4px}
+  .kothird-t{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:center;padding-bottom:6px}
   .team{font-weight:500}
+  .flag{width:1.2em;height:.82em;object-fit:cover;border-radius:2px;margin-right:5px;vertical-align:-1px;box-shadow:0 0 0 .5px rgba(0,0,0,.35);flex:none}
+  table.gtable{table-layout:fixed;width:100%}
+  table.gtable td.team{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .scoreline{font-variant-numeric:tabular-nums;font-weight:600}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
   .settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
@@ -135,6 +160,8 @@
     .auth-wrap{padding:14px}
     .auth-card{padding:20px}
     .toast{bottom:14px;font-size:13px}
+    .koround{min-width:102px;padding:0 5px}
+    .koteam{font-size:9.5px;padding:4px 5px}
     /* stacked-card tables on mobile (Matches & Predictions) */
     table.mtable{font-size:13px}
     table.mtable thead{display:none}
@@ -177,7 +204,7 @@ function setCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
 
 let sb=null, user=null, me=null;
 let state=null;
-let TAB="leaderboard", curPlayer=null, matchFilter={stage:"",q:""}, authMode="signin", onlyMissing=false, showFinishedPred=false;
+let TAB="leaderboard", curPlayer=null, matchFilter={stage:"",q:""}, authMode="signin", onlyMissing=false, showFinishedPred=false, bracketFit=true;
 
 const root=()=>document.getElementById("root");
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
@@ -187,6 +214,24 @@ function toast(msg,err){const t=document.getElementById("toast");t.textContent=m
 //  Boot
 // ===========================================================================
 window.addEventListener("DOMContentLoaded", init);
+window.addEventListener("resize",()=>{ if(state&&TAB==="bracket") fitBracket(); });
+// Scale the knockout bracket to fit the screen width (so the whole tree is visible).
+function fitBracket(){
+  const fit=document.querySelector(".kofit"); const wrap=document.querySelector(".kowrap");
+  if(!fit||!wrap) return;
+  // reset
+  wrap.style.transform=""; wrap.style.width=""; wrap.style.overflowX=""; fit.style.height="";
+  if(!bracketFit){ wrap.style.overflowX="auto"; return; }        // full size → native side-scroll
+  const natural=wrap.scrollWidth;                                 // measure full content width
+  wrap.style.overflowX="visible"; wrap.style.width=natural+"px";  // lay out at natural width
+  const avail=fit.clientWidth;
+  if(natural>avail){
+    const s=avail/natural;
+    wrap.style.transformOrigin="top left";
+    wrap.style.transform="scale("+s+")";
+    fit.style.height=(wrap.scrollHeight*s)+"px";
+  }
+}
 async function init(){
   const cfg=getCfg();
   // Admin escape hatch: open the page with #dbsettings to change the connection.
@@ -416,7 +461,28 @@ function resolveAll(M){
   function loser(id){const m=byId[id];if(!m||!isNum(m.actual_home)||!isNum(m.actual_away))return null;const hs=+m.actual_home,as=+m.actual_away;let l=hs>as?"away":hs<as?"home":((m.pen_winner||"").toLowerCase()==="home"?"away":(m.pen_winner||"").toLowerCase()==="away"?"home":null);return l?resolve(id,l):null;}
   const out={};M.forEach(m=>{out[m.id+"|home"]=resolve(m.id,"home");out[m.id+"|away"]=resolve(m.id,"away");});return out;}
 let RES={};
-function tname(m,side){return RES[m.id+"|"+side]||(side==="home"?m.home:m.away);}
+function tname(m,side){
+  const r=RES[m.id+"|"+side]; if(r) return r;                 // resolved real team
+  const raw=String((side==="home"?m.home:m.away)||"");
+  let mm;
+  if(mm=raw.match(/(\d)(?:st|nd|rd) Group ([A-L/]+)/)) return mm[1]+(mm[1]==="1"?"st":mm[1]==="2"?"nd":"rd")+" Group "+mm[2]; // e.g. 1st Group A
+  if(/Winner of|Loser of/.test(raw)) return "TBD";            // hide internal match-id refs
+  return raw;
+}
+// FIFA 3-letter code -> ISO code for flagcdn.com (flags served from CDN, nothing hosted locally)
+const FIFA2ISO={CZE:"cz",MEX:"mx",RSA:"za",KOR:"kr",SUI:"ch",CAN:"ca",BIH:"ba",QAT:"qa",SCO:"gb-sct",BRA:"br",
+MAR:"ma",HTI:"ht",TUR:"tr",USA:"us",PAR:"py",AUS:"au",GER:"de",CIV:"ci",ECU:"ec",CUW:"cw",NED:"nl",SWE:"se",
+TUN:"tn",JPN:"jp",BEL:"be",IRI:"ir",NZL:"nz",EGY:"eg",ESP:"es",KSA:"sa",URU:"uy",CPV:"cv",FRA:"fr",IRQ:"iq",
+NOR:"no",SEN:"sn",ARG:"ar",AUT:"at",JOR:"jo",DZA:"dz",POR:"pt",UZB:"uz",COL:"co",COD:"cd",ENG:"gb-eng",
+GHA:"gh",PAN:"pa",CRO:"hr"};
+function flagHtml(name){
+  const m=String(name||"").match(/\(([A-Z]{3})\)\s*$/);
+  if(!m) return "";
+  const iso=FIFA2ISO[m[1]]; if(!iso) return "";
+  return `<img class="flag" src="https://flagcdn.com/w40/${iso}.png" alt="" loading="lazy" onerror="this.remove()">`;
+}
+// team label with flag prefix
+function teamCell(m,side){const n=tname(m,side);return flagHtml(n)+esc(n);}
 
 // Combine match_date + kickoff into a Date (treated as local time). Null if no date.
 function matchDateTime(m){
@@ -440,8 +506,8 @@ function dueMissing(){ return state.matches.filter(matchDueMissing); }
 function render(){
   RES=resolveAll(state.matches);
   const slotName=me.player_id!=null?(state.players.find(p=>p.id===me.player_id)||{}).name:null;
-  const tabsArr=[["leaderboard","Leaderboard"],["matches","Matches & Results"],["players","Predictions"],["champion","Champion"]];
-  if(isAdmin()){ tabsArr.push(["bracket","Bracket"]); tabsArr.push(["settings","Settings"]); tabsArr.push(["admin","Admin"]); }
+  const tabsArr=[["leaderboard","Leaderboard"],["matches","Matches & Results"],["players","Predictions"],["champion","Champion"],["bracket","Bracket"]];
+  if(isAdmin()){ tabsArr.push(["settings","Settings"]); tabsArr.push(["admin","Admin"]); }
   root().innerHTML=`
   <header>
     <h1>🏆 World Cup 2026 — <span>Prediction Pool</span></h1>
@@ -463,6 +529,7 @@ function render(){
   else if(TAB==="settings") v.innerHTML=viewSettings();
   else if(TAB==="admin") v.innerHTML=viewAdmin();
   wire();
+  if(TAB==="bracket") fitBracket();
 }
 
 // ----- Leaderboard -----
@@ -518,9 +585,9 @@ function viewMatches(){
     } else winCell=`<span class="winner">${esc(info.winner)}</span>`;
     body+=`<tr>
       <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")}</td>
-      <td data-label="Home" class="team" style="text-align:right">${esc(tname(m,"home"))}</td>
+      <td data-label="Home" class="team" style="text-align:right">${teamCell(m,"home")}</td>
       <td data-label="Score" class="num"><span class="scoregrp"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></span></td>
-      <td data-label="Away" class="team">${esc(tname(m,"away"))}</td>
+      <td data-label="Away" class="team">${teamCell(m,"away")}</td>
       <td data-label="Winner" class="num">${winCell}</td>
       <td data-label="Status" class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}${m.results_only?' <span class="pill" style="background:rgba(74,163,255,.16);color:var(--accent2)">ref</span>':''}</td></tr>`;
   });
@@ -567,9 +634,9 @@ function viewPlayers(){
     const dis=canEdit?"":"disabled";
     return `<tr>
       <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")} · ${esc(m.stage)}</td>
-      <td data-label="Home" class="team" style="text-align:right">${esc(tname(m,"home"))}</td>
+      <td data-label="Home" class="team" style="text-align:right">${teamCell(m,"home")}</td>
       <td data-label="Your pick" class="num"><span class="scoregrp"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></span></td>
-      <td data-label="Away" class="team">${esc(tname(m,"away"))}</td>
+      <td data-label="Away" class="team">${teamCell(m,"away")}</td>
       <td data-label="Actual" class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
       <td data-label="Points" class="num">${pt}</td></tr>`;
   }).join("");
@@ -609,21 +676,59 @@ function viewChampion(){
     ${rows}</div>`;
 }
 
-// ----- Bracket / Group Standings (admin) -----
+// ----- Bracket (visible to everyone; overrides admin-only) -----
 function viewBracket(){
   const M=state.matches;
+  const admin=isAdmin();
   const auto=new Set(autoThirdGroups(M));
   const qual=[...thirdGroups(M)].sort();
+  // Knockout tree — classic two-sided bracket: left half | Final | mirrored right half
+  const koLabel={"Round Of 32":"Round of 32","Round Of 16":"Round of 16","Quarterfinal":"Quarter-finals","Semifinal":"Semi-finals","3Rd Place Playoff":"Third place","Final":"Final"};
+  const byId={}; state.matches.forEach(m=>byId[m.id]=m);
+  const feederIds=m=>{const ids=[];["home","away"].forEach(s=>{const t=s==="home"?m.home:m.away;const mm=String(t||"").match(/(?:Winner|Loser) of (\d+)/);if(mm)ids.push(mm[1]);});return ids;};
+  const subtreeIds=id=>{const out=new Set();const st=[id];while(st.length){const x=st.pop();if(!byId[x]||out.has(x))continue;out.add(x);feederIds(byId[x]).forEach(f=>st.push(f));}return out;};
+  let ordOf=()=>0;
+  const koCard=m=>{
+    const info=matchInfo(m);
+    const hn=teamCell(m,"home"), an=teamCell(m,"away");
+    let ws=null,pens=false;
+    if(info.completed){ if(info.result==="Home")ws="home"; else if(info.result==="Away")ws="away"; else if(m.pen_winner){ws=m.pen_winner.toLowerCase();pens=true;} }
+    const hs=info.completed?esc(m.actual_home):"", as=info.completed?esc(m.actual_away):"";
+    const cap=info.completed?(pens?'<div class="kocap">decided on penalties</div>':"")
+      :`<div class="kocap">${esc((m.match_date||"").slice(5))}${m.kickoff?(" · "+esc(m.kickoff)):""}</div>`;
+    return `<div class="komatch"><div class="koteam ${ws==="home"?'kowin':''}"><span class="kon">${hn}</span><span class="kosc">${hs}</span></div><div class="koteam ${ws==="away"?'kowin':''}"><span class="kon">${an}</span><span class="kosc">${as}</span></div>${cap}</div>`;
+  };
+  const koCol=(stage,set,rev)=>{
+    const ms=state.matches.filter(m=>m.stage===stage&&(!set||set.has(m.id)));
+    if(!ms.length)return"";
+    ms.sort((a,b)=>(set?(ordOf(a.id)-ordOf(b.id)):0)||String(a.match_date||"").localeCompare(String(b.match_date||"")));
+    return `<div class="koround ${rev?'rev':''}"><div class="koround-t">${esc(koLabel[stage]||stage)}</div><div class="korbody">${ms.map(koCard).join("")}</div></div>`;
+  };
+  const finalM=state.matches.find(m=>m.stage==="Final");
+  const thirdM=state.matches.find(m=>m.stage==="3Rd Place Playoff");
+  const sf=finalM?feederIds(finalM):[];
+  let ko="";
+  if(finalM&&sf.length===2){
+    const idx={};let c=0;(function rec(id){const m=byId[id];if(!m)return;const fs=feederIds(m);if(fs.length===2){rec(fs[0]);rec(fs[1]);}else idx[id]=c++;})(finalM.id);
+    ordOf=id=>{let mn=Infinity;subtreeIds(id).forEach(x=>{if(idx[x]!=null)mn=Math.min(mn,idx[x]);});return mn;};
+    const L=subtreeIds(sf[0]), R=subtreeIds(sf[1]);
+    const rounds=["Round Of 32","Round Of 16","Quarterfinal","Semifinal"];
+    const leftCols=rounds.map(r=>koCol(r,L,false)).join("");
+    const rightCols=rounds.slice().reverse().map(r=>koCol(r,R,true)).join("");
+    const centerCol=`<div class="koround kocenter"><div class="koround-t">Final</div><div class="korbody">${koCard(finalM)}${thirdM?`<div class="kothird"><div class="kothird-t">Third place</div>${koCard(thirdM)}</div>`:""}</div></div>`;
+    ko=leftCols+centerCol+rightCols;
+  } else {
+    ["Round Of 32","Round Of 16","Quarterfinal","Semifinal","3Rd Place Playoff","Final"].forEach(stage=>{ ko+=koCol(stage,null,false); });
+  }
+  // Group standings
   const cards=GROUPS(M).map(g=>{
     const tbl=computeGroupTable(M,g);
     const ready=groupReady(M,g);
     const meta=gmeta()[g]||{mode:"auto",third_in:"auto"};
     const manual=meta.mode==="manual";
     const tOpts=sel=>`<option value="">—</option>`+groupTeams(M,g).map(t=>`<option ${t===sel?"selected":""}>${esc(t)}</option>`).join("");
-    const rows=tbl.map((t,i)=>`<tr><td class="rank ${i<2?'r1':(i===2?'r3':'')}">${i+1}</td><td class="team">${esc(t.team)}</td><td class="num">${t.P}</td><td class="num">${t.W}-${t.D}-${t.L}</td><td class="num">${t.GD>0?'+':''}${t.GD}</td><td class="num"><b>${t.Pts}</b></td></tr>`).join("");
-    return `<div class="card"><h2>Group ${g} ${ready?'<span class="pill done">complete</span>':'<span class="pill pending">in progress</span>'}</h2>
-      <table><thead><tr><th class="num">#</th><th>Team</th><th class="num">P</th><th class="num">W-D-L</th><th class="num">GD</th><th class="num">Pts</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="filters" style="margin-top:10px;align-items:center">
+    const rows=tbl.map((t,i)=>`<tr><td class="rank ${i<2?'r1':(i===2?'r3':'')}">${i+1}</td><td class="team">${flagHtml(t.team)}${esc(t.team)}</td><td class="num">${t.P}</td><td class="num">${t.W}-${t.D}-${t.L}</td><td class="num">${t.GD>0?'+':''}${t.GD}</td><td class="num"><b>${t.Pts}</b></td></tr>`).join("");
+    const controls = admin ? `<div class="filters" style="margin-top:10px;align-items:center">
         <span class="muted">Qualifiers:</span>
         <select class="inp" data-gm="${g}" data-pos="mode"><option value="auto" ${!manual?"selected":""}>Auto (from table)</option><option value="manual" ${manual?"selected":""}>Manual</option></select>
         ${manual?`<span class="muted">1st</span><select class="inp" data-gm="${g}" data-pos="pos1">${tOpts(meta.pos1)}</select>
@@ -634,11 +739,20 @@ function viewBracket(){
           <option value="auto" ${(meta.third_in||"auto")==="auto"?"selected":""}>Auto (${auto.has(g)?"in":"out"})</option>
           <option value="yes" ${meta.third_in==="yes"?"selected":""}>Yes</option>
           <option value="no" ${meta.third_in==="no"?"selected":""}>No</option></select>
-      </div></div>`;
+      </div>` : "";
+    return `<div class="card"><h2>Group ${g} ${ready?'<span class="pill done">complete</span>':'<span class="pill pending">in progress</span>'}</h2>
+      <table class="gtable"><colgroup><col style="width:7%"><col><col style="width:12%"><col style="width:19%"><col style="width:13%"><col style="width:13%"></colgroup><thead><tr><th class="num">#</th><th>Team</th><th class="num">P</th><th class="num">W-D-L</th><th class="num">GD</th><th class="num">Pts</th></tr></thead><tbody>${rows}</tbody></table>
+      ${controls}</div>`;
   }).join("");
-  return `<div class="card"><h2>Bracket / Group Standings</h2>
-    <div class="sub">Group tables compute live from entered results, and the knockout names always reflect the <b>current</b> standings — they update after every completed game. Positions stay provisional until a group's "complete" badge shows. Switch any group to <b>Manual</b> to override 1st / 2nd / 3rd by hand.</div>
-    <div class="hint">Best-3rd-place groups currently qualifying (need 8): <b>${qual.join(", ")||"—"}</b>${qual.length!==8?` <span style="color:var(--warn)">(${qual.length}/8 — set more groups' 3rd to Yes, or complete the groups)</span>`:""}</div>
+  return `<div class="card"><h2>Knockout Bracket</h2>
+    <div class="filters" style="justify-content:space-between;align-items:center">
+      <span class="sub" style="margin:0">Live — updates after every completed game. Top 2 + 8 best 3rd-place advance.</span>
+      <button class="btn" id="btnFit">${bracketFit?"Full size ↔":"Fit to screen"}</button>
+    </div>
+    <div class="kofit"><div class="kowrap">${ko||'<span class="muted">No knockout matches yet.</span>'}</div></div></div>
+    <div class="card"><h2>Group Standings</h2>
+    <div class="sub">${admin?"Live tables. Switch any group to Manual to override 1st / 2nd / 3rd.":"Live group tables — updated as results come in."}</div>
+    <div class="hint">Best-3rd-place groups currently qualifying (need 8): <b>${qual.join(", ")||"—"}</b>${qual.length!==8?` <span style="color:var(--warn)">(${qual.length}/8)</span>`:""}</div>
     </div>${cards}`;
 }
 
@@ -676,6 +790,7 @@ function viewAdmin(){
 //  Wiring + DB writes
 // ===========================================================================
 function wire(){
+  const bf=document.getElementById("btnFit"); if(bf)bf.onclick=()=>{bracketFit=!bracketFit;render();};
   const bc=document.getElementById("btnCheck"); if(bc)bc.onclick=()=>{
     const n=dueMissing().length;
     if(n===0){ onlyMissing=false; toast("All played matches already have results ✓"); render(); }
