@@ -112,10 +112,18 @@
 <script>
 "use strict";
 // ===========================================================================
-//  Config (Supabase URL + anon key). Stored locally so no file editing needed.
+//  Connection config. Pre-filled below so players just open the page & log in.
+//  (The anon key is public/safe to embed — security is enforced by database RLS.)
 // ===========================================================================
-const CFG_KEY="wc_sb_cfg";
-function getCfg(){ try{return JSON.parse(localStorage.getItem(CFG_KEY))||null;}catch(e){return null;} }
+const CFG_KEY="wc_sb_cfg_v2";
+const BAKED_CFG={
+  url:"https://jowksafsjgzvxaaprpsp.supabase.co",
+  key:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impvd2tzYWZzamd6dnhhYXBycHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5OTk4NjEsImV4cCI6MjA5NzU3NTg2MX0.Oobui_PtiClGrvVKI3C6cqoh6yD2HqRAs4ddNB5Pd3k"
+};
+function getCfg(){
+  try{const c=JSON.parse(localStorage.getItem(CFG_KEY)); if(c&&c.url&&c.key) return c;}catch(e){}
+  return (BAKED_CFG.url&&BAKED_CFG.key)?BAKED_CFG:null;
+}
 function setCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
 
 let sb=null, user=null, me=null;
@@ -143,7 +151,7 @@ async function init(){
 }
 
 // ===========================================================================
-//  Config screen
+//  Config screen (only shown if no baked-in config and none saved locally)
 // ===========================================================================
 function renderConfig(errMsg){
   root().innerHTML=`
@@ -289,7 +297,7 @@ function matchDateTime(m){
 }
 // A match is "due but missing" if its kickoff has passed and it has no full score yet.
 function matchDueMissing(m){
-  if(matchInfo(m).completed) return false;        // already has both scores
+  if(matchInfo(m).completed) return false;
   const dt=matchDateTime(m);
   return dt!=null && dt.getTime()<=Date.now();
 }
@@ -354,7 +362,7 @@ function viewMatches(){
   const adminCan=isAdmin();
   const opts=`<option value="">All stages</option>`+stages().map(s=>`<option ${matchFilter.stage===s?"selected":""}>${esc(s)}</option>`).join("");
   let last=null,body="",shown=0;
-  state.matches.forEach((m,mi)=>{
+  state.matches.forEach(m=>{
     if(onlyMissing&&!matchDueMissing(m))return;
     if(!onlyMissing&&matchFilter.stage&&m.stage!==matchFilter.stage)return;
     if(!onlyMissing&&matchFilter.q){const q=matchFilter.q.toLowerCase();if(!((m.home||"")+(m.away||"")+(m.stage||"")).toLowerCase().includes(q))return;}
