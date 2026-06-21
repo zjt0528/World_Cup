@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Cup 2026 Prediction Pool</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a2230; --panel2:#222d3d; --line:#2c3a4d;
+    --txt:#e8edf4; --muted:#93a3b8; --accent:#3ddc97; --accent2:#4aa3ff;
+    --gold:#ffd24a; --silver:#cdd6e0; --bronze:#e0975a; --warn:#ff6b6b;
+    --exact:#3ddc97; --result:#4aa3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent2)}
+  header{padding:14px 22px;background:linear-gradient(120deg,#162033,#0f1419);border-bottom:1px solid var(--line);
+         display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  header h1{margin:0;font-size:18px;font-weight:700}
+  header h1 span{color:var(--accent)}
+  .whoami{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(74,163,255,.16);color:var(--accent2)}
+  .badge.admin{background:rgba(255,210,74,.16);color:var(--gold)}
+  button,select,input{font-family:inherit;font-size:13px}
+  .btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:7px 12px;border-radius:8px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--accent);color:#fff}
+  .btn.primary{background:var(--accent);color:#06281c;border-color:var(--accent);font-weight:600;width:100%;padding:11px}
+  .btn.danger:hover{border-color:var(--warn);color:var(--warn)}
+  nav{display:flex;gap:4px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto}
+  nav .tab{padding:12px 16px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;font-weight:500}
+  nav .tab:hover{color:var(--txt)}
+  nav .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  main{padding:22px;max-width:1180px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:18px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  td.num,th.num{text-align:center}
+  .cell-in{width:46px;text-align:center;background:#15324a;color:#fff;border:1px solid #2c4a63;border-radius:6px;padding:5px}
+  .cell-in:focus{outline:none;border-color:var(--accent2);background:#1b4061}
+  .cell-in.actual{background:#3a2e12;border-color:#5c4a1c}
+  .cell-in.actual:focus{border-color:var(--gold);background:#4a3a14}
+  .cell-in:disabled{opacity:.5;cursor:not-allowed}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill.exact{background:rgba(61,220,151,.16);color:var(--exact)}
+  .pill.result{background:rgba(74,163,255,.16);color:var(--result)}
+  .pill.wrong{background:rgba(255,107,107,.14);color:var(--warn)}
+  .pill.pending{background:rgba(147,163,184,.14);color:var(--muted)}
+  .pill.done{background:rgba(61,220,151,.16);color:var(--exact)}
+  .rank{font-weight:700;width:34px;text-align:center}
+  .rank.r1{color:var(--gold)} .rank.r2{color:var(--silver)} .rank.r3{color:var(--bronze)}
+  .totbig{font-weight:700;font-size:15px}
+  .bar-wrap{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .bar-name{width:130px;flex:none;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-track{flex:1;background:var(--panel2);border-radius:6px;height:22px;overflow:hidden}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:6px;transition:width .4s}
+  .bar-val{width:42px;flex:none;text-align:right;font-weight:600}
+  .stagehdr td{background:var(--panel2);font-weight:700;color:var(--accent);font-size:12px;letter-spacing:.5px;text-transform:uppercase}
+  .stat{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+  .stat .box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;min-width:104px}
+  .stat .box .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  .stat .box .v{font-size:22px;font-weight:700;margin-top:2px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  .filters input[type=text],.filters select,select.inp,input.inp{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:7px 10px;border-radius:8px}
+  .muted{color:var(--muted)}
+  .vs{color:var(--muted);padding:0 4px}
+  .team{font-weight:500}
+  .scoreline{font-variant-numeric:tabular-nums;font-weight:600}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:680px){.settings-grid{grid-template-columns:1fr}}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .field input,.field select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:8px}
+  .field input:focus{outline:none;border-color:var(--accent)}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#06281c;
+         padding:10px 18px;border-radius:10px;font-weight:600;opacity:0;transition:.3s;pointer-events:none;z-index:50;max-width:90%}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--warn);color:#2a0808}
+  .champ-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .champ-row .nm{width:160px;font-weight:500}
+  .champ-row input{flex:1;max-width:260px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:7px 10px;border-radius:8px}
+  .auth-wrap{min-height:80vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .auth-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px;width:100%;max-width:400px}
+  .auth-card h2{margin:0 0 4px;font-size:20px}
+  .auth-card .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .switch{text-align:center;margin-top:14px;font-size:13px;color:var(--muted)}
+  .switch a{cursor:pointer}
+  .hint{font-size:12px;color:var(--muted);background:var(--panel2);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+  .winner{color:var(--accent);font-weight:600}
+  .checkbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;
+            background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+  .checkbar .muted{font-size:12px}
+  .btn.warnbtn{border-color:var(--gold);color:var(--gold)}
+  .btn.warnbtn:hover{background:rgba(255,210,74,.12)}
+  .btn .cnt{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:20px;
+            background:var(--gold);color:#2a2208;font-weight:700;font-size:11px;text-align:center}
+  .spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .center-msg{text-align:center;padding:60px 20px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+"use strict";
+// ===========================================================================
+//  Config (Supabase URL + anon key). Stored locally so no file editing needed.
+// ===========================================================================
+const CFG_KEY="wc_sb_cfg";
+function getCfg(){ try{return JSON.parse(localStorage.getItem(CFG_KEY))||null;}catch(e){return null;} }
+function setCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
+
+let sb=null, user=null, me=null;
+let state=null;
+let TAB="leaderboard", curPlayer=null, matchFilter={stage:"",q:""}, authMode="signin", onlyMissing=false;
+
+const root=()=>document.getElementById("root");
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function toast(msg,err){const t=document.getElementById("toast");t.textContent=msg;t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast",err?2600:1600);}
+
+// ===========================================================================
+//  Boot
+// ===========================================================================
+window.addEventListener("DOMContentLoaded", init);
+async function init(){
+  const cfg=getCfg();
+  if(!cfg||!cfg.url||!cfg.key){ return renderConfig(); }
+  try{
+    sb=window.supabase.createClient(cfg.url, cfg.key);
+  }catch(e){ return renderConfig("Could not initialise — check your URL and key."); }
+  const {data:{session}}=await sb.auth.getSession();
+  if(session){ user=session.user; await afterLogin(); }
+  else renderAuth();
+  sb.auth.onAuthStateChange((_e,s)=>{ if(!s){ user=null; me=null; state=null; renderAuth(); } });
+}
+
+// ===========================================================================
+//  Config screen
+// ===========================================================================
+function renderConfig(errMsg){
+  root().innerHTML=`
+  <div class="auth-wrap"><div class="auth-card">
+    <h2>🏆 Connect your database</h2>
+    <div class="sub">One-time setup. Paste your Supabase project details (see the setup guide). Stored only in this browser.</div>
+    ${errMsg?`<div class="hint" style="border-color:var(--warn)">${esc(errMsg)}</div>`:""}
+    <div class="field"><label>Project URL</label><input id="cfgUrl" placeholder="https://xxxxx.supabase.co"></div>
+    <div class="field"><label>Anon public key</label><input id="cfgKey" placeholder="eyJhbGci..."></div>
+    <button class="btn primary" id="cfgSave">Save & continue</button>
+    <div class="switch">Find both under <b>Project Settings → API</b> in Supabase.</div>
+  </div></div>`;
+  document.getElementById("cfgSave").onclick=()=>{
+    const url=document.getElementById("cfgUrl").value.trim().replace(/\/+$/,"");
+    const key=document.getElementById("cfgKey").value.trim();
+    if(!url||!key) return toast("Enter both fields",true);
+    setCfg({url,key}); init();
+  };
+}
+
+// ===========================================================================
+//  Auth screen
+// ===========================================================================
+function renderAuth(){
+  const signup=authMode==="signup";
+  root().innerHTML=`
+  <div class="auth-wrap"><div class="auth-card">
+    <h2>🏆 World Cup 2026 Pool</h2>
+    <div class="sub">${signup?"Create your account to join the pool.":"Sign in to enter your predictions."}</div>
+    <div class="field"><label>Email</label><input id="auEmail" type="email" autocomplete="email"></div>
+    <div class="field"><label>Password</label><input id="auPass" type="password" autocomplete="${signup?"new-password":"current-password"}"></div>
+    <button class="btn primary" id="auGo">${signup?"Sign up":"Sign in"}</button>
+    <div class="switch">${signup?"Already have an account? ":"New here? "}
+      <a id="auSwitch">${signup?"Sign in":"Create an account"}</a></div>
+    <div class="switch"><a id="auCfg" class="muted">Change database settings</a></div>
+  </div></div>`;
+  document.getElementById("auSwitch").onclick=()=>{authMode=signup?"signin":"signup";renderAuth();};
+  document.getElementById("auCfg").onclick=()=>renderConfig();
+  document.getElementById("auGo").onclick=doAuth;
+  document.getElementById("auPass").addEventListener("keydown",e=>{if(e.key==="Enter")doAuth();});
+}
+async function doAuth(){
+  const email=document.getElementById("auEmail").value.trim();
+  const password=document.getElementById("auPass").value;
+  if(!email||!password) return toast("Enter email and password",true);
+  const btn=document.getElementById("auGo"); btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  try{
+    if(authMode==="signup"){
+      const {data,error}=await sb.auth.signUp({email,password});
+      if(error) throw error;
+      if(!data.session){ toast("Account created. If email confirmation is on, check your inbox, then sign in.",false);
+        authMode="signin"; return renderAuth(); }
+      user=data.user; await afterLogin();
+    }else{
+      const {data,error}=await sb.auth.signInWithPassword({email,password});
+      if(error) throw error;
+      user=data.user; await afterLogin();
+    }
+  }catch(e){ toast(e.message||"Authentication failed",true); btn.disabled=false; btn.textContent=authMode==="signup"?"Sign up":"Sign in"; }
+}
+
+// ===========================================================================
+//  Load data after login
+// ===========================================================================
+async function afterLogin(){
+  root().innerHTML=`<div class="center-msg"><span class="spinner"></span> Loading…</div>`;
+  try{ await loadAll(); }
+  catch(e){ root().innerHTML=`<div class="center-msg">Failed to load data.<br>${esc(e.message||e)}<br><br>
+    <button class="btn" onclick="signOut()">Sign out</button></div>`; return; }
+  if(me && me.role==="player" && me.player_id!=null) curPlayer=me.player_id;
+  else curPlayer=(state.players[0]||{}).id||null;
+  TAB="leaderboard";
+  render();
+}
+async function loadAll(){
+  const q=[
+    sb.from("profiles").select("*").eq("user_id",user.id).maybeSingle(),
+    sb.from("settings").select("*").eq("id",1).maybeSingle(),
+    sb.from("players").select("*").order("id"),
+    sb.from("matches").select("*").order("sort_order"),
+    sb.from("predictions").select("*"),
+    sb.from("champion_picks").select("*"),
+  ];
+  const [pf,se,pl,ma,pr,ch]=await Promise.all(q);
+  for(const r of [pf,se,pl,ma,pr,ch]) if(r.error) throw r.error;
+  me = pf.data || {user_id:user.id,email:user.email,role:"player",player_id:null};
+  const predMap={}; (pr.data||[]).forEach(p=>predMap[p.player_id+"|"+p.match_id]={h:p.home_pred,a:p.away_pred});
+  const champ={}; (ch.data||[]).forEach(c=>champ[c.player_id]=c.pick);
+  state={ settings:se.data||{exact_pts:2,result_pts:1,wrong_pts:0,champ_bonus:0,actual_champion:null},
+          players:pl.data||[], matches:ma.data||[], predMap, champ, profiles:[] };
+  if(me.role==="admin"){
+    const {data:profs,error}=await sb.from("profiles").select("*").order("created_at");
+    if(!error) state.profiles=profs||[];
+  }
+}
+async function signOut(){ await sb.auth.signOut(); }
+window.signOut=signOut;
+
+// ===========================================================================
+//  Scoring (mirrors the original spreadsheet formulas)
+// ===========================================================================
+function isNum(x){return x!==""&&x!=null&&!isNaN(Number(x));}
+function sign(n){return n>0?1:(n<0?-1:0);}
+function pred(pid,mid){return state.predMap[pid+"|"+mid]||{h:null,a:null};}
+function pointsFor(hp,ap,ah,aa){
+  if(!isNum(hp)||!isNum(ap)||!isNum(ah)||!isNum(aa)) return null;
+  hp=+hp;ap=+ap;ah=+ah;aa=+aa;
+  if(hp===ah&&ap===aa) return {pts:Number(state.settings.exact_pts),type:"exact"};
+  if(sign(hp-ap)===sign(ah-aa)) return {pts:Number(state.settings.result_pts),type:"result"};
+  return {pts:Number(state.settings.wrong_pts),type:"wrong"};
+}
+function playerStats(pid){
+  let match=0,exact=0,result=0;
+  state.matches.forEach(m=>{
+    const p=pred(pid,m.id);
+    const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
+    if(r){match+=r.pts; if(r.type==="exact")exact++; else if(r.type==="result")result++;}
+  });
+  const cb=(state.champ[pid] && state.settings.actual_champion && state.champ[pid]===state.settings.actual_champion)?Number(state.settings.champ_bonus):0;
+  return {match,exact,result,champBonus:cb,total:match+cb};
+}
+function leaderboard(){
+  const rows=state.players.map(p=>({id:p.id,name:p.name,...playerStats(p.id)}));
+  rows.sort((a,b)=>b.total-a.total||b.exact-a.exact||b.result-a.result||a.name.localeCompare(b.name));
+  return rows;
+}
+function matchInfo(m){
+  if(!isNum(m.actual_home)||!isNum(m.actual_away)) return {result:"",winner:"",completed:false};
+  const ah=+m.actual_home,aa=+m.actual_away;
+  const result=ah>aa?"Home":(ah<aa?"Away":"Draw");
+  return {result,winner:result==="Home"?m.home:(result==="Away"?m.away:"Draw"),completed:true};
+}
+function stages(){const s=[];state.matches.forEach(m=>{if(!s.includes(m.stage))s.push(m.stage);});return s;}
+const isAdmin=()=>me&&me.role==="admin";
+
+// Combine match_date + kickoff into a Date (treated as local time). Null if no date.
+function matchDateTime(m){
+  if(!m.match_date) return null;
+  const t=(m.kickoff||"").trim();
+  const hm=/^\d{1,2}:\d{2}$/.test(t)?t:"00:00";
+  const d=new Date(m.match_date+"T"+(hm.length===4?"0"+hm:hm)+":00");
+  return isNaN(d.getTime())?null:d;
+}
+// A match is "due but missing" if its kickoff has passed and it has no full score yet.
+function matchDueMissing(m){
+  if(matchInfo(m).completed) return false;        // already has both scores
+  const dt=matchDateTime(m);
+  return dt!=null && dt.getTime()<=Date.now();
+}
+function dueMissing(){ return state.matches.filter(matchDueMissing); }
+
+// ===========================================================================
+//  Shell + tabs
+// ===========================================================================
+function render(){
+  const slotName=me.player_id!=null?(state.players.find(p=>p.id===me.player_id)||{}).name:null;
+  const tabsArr=[["leaderboard","Leaderboard"],["matches","Matches & Results"],["players","Predictions"],["champion","Champion"]];
+  if(isAdmin()){ tabsArr.push(["settings","Settings"]); tabsArr.push(["admin","Admin"]); }
+  root().innerHTML=`
+  <header>
+    <h1>🏆 World Cup 2026 — <span>Prediction Pool</span></h1>
+    <div class="whoami">
+      <span>${esc(me.email||user.email)}</span>
+      <span class="badge ${isAdmin()?"admin":""}">${isAdmin()?"Admin":(slotName?esc(slotName):"No slot yet")}</span>
+      <button class="btn" onclick="signOut()">Sign out</button>
+    </div>
+  </header>
+  <nav>${tabsArr.map(([k,l])=>`<div class="tab ${TAB===k?"active":""}" data-tab="${k}">${l}</div>`).join("")}</nav>
+  <main id="view"></main>`;
+  document.querySelectorAll("nav .tab").forEach(el=>el.onclick=()=>{TAB=el.dataset.tab;render();});
+  const v=document.getElementById("view");
+  if(TAB==="leaderboard") v.innerHTML=viewLeaderboard();
+  else if(TAB==="matches") v.innerHTML=viewMatches();
+  else if(TAB==="players") v.innerHTML=viewPlayers();
+  else if(TAB==="champion") v.innerHTML=viewChampion();
+  else if(TAB==="settings") v.innerHTML=viewSettings();
+  else if(TAB==="admin") v.innerHTML=viewAdmin();
+  wire();
+}
+
+// ----- Leaderboard -----
+function viewLeaderboard(){
+  const lb=leaderboard();
+  const max=Math.max(1,...lb.map(r=>r.total));
+  const medal=i=>i===0?"r1":i===1?"r2":i===2?"r3":"";
+  const rows=lb.map((r,i)=>`<tr>
+    <td class="rank ${medal(i)}">${i+1}</td><td class="team">${esc(r.name)}</td>
+    <td class="num">${r.match}</td><td class="num">${r.champBonus}</td>
+    <td class="num totbig">${r.total}</td>
+    <td class="num"><span class="pill exact">${r.exact}</span></td>
+    <td class="num"><span class="pill result">${r.result}</span></td></tr>`).join("");
+  const bars=lb.map(r=>`<div class="bar-wrap"><div class="bar-name">${esc(r.name)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(r.total/max*100).toFixed(1)}%"></div></div>
+    <div class="bar-val">${r.total}</div></div>`).join("");
+  const done=state.matches.filter(m=>matchInfo(m).completed).length;
+  return `<div class="card"><h2>Standings</h2>
+    <div class="sub">Total = match points + champion bonus. ${done}/${state.matches.length} matches completed. Live for everyone.</div>
+    <table><thead><tr><th class="num">#</th><th>Participant</th><th class="num">Match Pts</th><th class="num">Champ Bonus</th><th class="num">Total</th><th class="num">Exact</th><th class="num">Result Only</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="legend"><span><b style="color:var(--exact)">Exact</b> = correct scoreline (${state.settings.exact_pts} pts)</span>
+    <span><b style="color:var(--result)">Result Only</b> = right W/D/L, wrong score (${state.settings.result_pts} pt)</span>
+    <span><b style="color:var(--warn)">Wrong</b> = ${state.settings.wrong_pts} pts</span></div></div>
+    <div class="card"><h2>Total Points</h2><div class="sub">Visual comparison</div>${bars}</div>`;
+}
+
+// ----- Matches -----
+function viewMatches(){
+  const adminCan=isAdmin();
+  const opts=`<option value="">All stages</option>`+stages().map(s=>`<option ${matchFilter.stage===s?"selected":""}>${esc(s)}</option>`).join("");
+  let last=null,body="",shown=0;
+  state.matches.forEach((m,mi)=>{
+    if(onlyMissing&&!matchDueMissing(m))return;
+    if(!onlyMissing&&matchFilter.stage&&m.stage!==matchFilter.stage)return;
+    if(!onlyMissing&&matchFilter.q){const q=matchFilter.q.toLowerCase();if(!((m.home||"")+(m.away||"")+(m.stage||"")).toLowerCase().includes(q))return;}
+    shown++;
+    if(m.stage!==last){last=m.stage;body+=`<tr class="stagehdr"><td colspan="6">${esc(m.stage)}</td></tr>`;}
+    const info=matchInfo(m);
+    const dis=adminCan?"":"disabled";
+    body+=`<tr>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")}</td>
+      <td class="team" style="text-align:right">${esc(m.home)}</td>
+      <td class="num"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}>
+        <span class="vs">:</span>
+        <input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></td>
+      <td class="team">${esc(m.away)}</td>
+      <td class="num">${info.completed?`<span class="winner">${esc(info.winner)}</span>`:'<span class="muted">—</span>'}</td>
+      <td class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}</td></tr>`;
+  });
+  const nMiss=adminCan?dueMissing().length:0;
+  const checker=adminCan?`<div class="checkbar">
+      <button class="btn ${nMiss?'warnbtn':''}" id="btnCheck">🔄 Check for missing results${nMiss?` <span class="cnt">${nMiss}</span>`:""}</button>
+      ${onlyMissing?`<button class="btn" id="btnShowAll">Show all matches</button>`:""}
+      <span class="muted">${nMiss?`${nMiss} played match${nMiss===1?"":"es"} still need a score.`:"All matches that have kicked off have results. ✓"}</span>
+    </div>`:"";
+  const banner=onlyMissing?`<div class="hint" style="border-color:var(--gold)">Showing only matches that have kicked off but have no score yet. Type each score below — it saves automatically and disappears from this list once both numbers are in.</div>`:"";
+  const empty=(onlyMissing&&shown===0)?`<tr><td colspan="6" class="center-msg" style="padding:30px">🎉 Nothing pending — every played match has a result.</td></tr>`:"";
+  return `<div class="card"><h2>Matches &amp; Results</h2>
+    <div class="sub">${adminCan?"Enter the actual score for finished matches — the whole pool updates instantly.":"Results are entered by the admin. Read-only for you."}</div>
+    ${checker}${banner}
+    <div class="filters" ${onlyMissing?'style="display:none"':""}><select class="inp" id="fStage">${opts}</select>
+      <input type="text" id="fQ" placeholder="Search team / stage…" value="${esc(matchFilter.q)}">
+      <span class="muted">${state.matches.length} fixtures</span></div>
+    <table><thead><tr><th>Date</th><th style="text-align:right">Home</th><th class="num">Score</th><th>Away</th><th class="num">Winner</th><th class="num">Status</th></tr></thead>
+    <tbody>${body}${empty}</tbody></table></div>`;
+}
+
+// ----- Predictions -----
+function viewPlayers(){
+  if(curPlayer==null) curPlayer=(state.players[0]||{}).id;
+  const editable=isAdmin()||curPlayer===me.player_id;
+  const st=playerStats(curPlayer);
+  const sel=state.players.map(p=>`<option value="${p.id}" ${p.id===curPlayer?"selected":""}>${esc(p.name)}${p.id===me.player_id?" (you)":""}</option>`).join("");
+  let last=null,body="";
+  state.matches.forEach(m=>{
+    const p=pred(curPlayer,m.id);
+    if(m.stage!==last){last=m.stage;body+=`<tr class="stagehdr"><td colspan="5">${esc(m.stage)}</td></tr>`;}
+    const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
+    const info=matchInfo(m);
+    let pt='<span class="pill pending">—</span>';
+    if(r) pt=r.type==="exact"?`<span class="pill exact">+${r.pts} exact</span>`:r.type==="result"?`<span class="pill result">+${r.pts} result</span>`:`<span class="pill wrong">+${r.pts}</span>`;
+    const dis=editable?"":"disabled";
+    body+=`<tr><td class="team" style="text-align:right">${esc(m.home)}</td>
+      <td class="num"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}>
+      <span class="vs">:</span>
+      <input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></td>
+      <td class="team">${esc(m.away)}</td>
+      <td class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
+      <td class="num">${pt}</td></tr>`;
+  });
+  const note = editable ? `<div class="hint">You're editing ${curPlayer===me.player_id?"your own":"this player's"} predictions. Changes save automatically.</div>`
+    : `<div class="hint">Viewing only. You can edit predictions for your own slot.</div>`;
+  return `<div class="card"><h2>Predictions</h2>
+    <div class="sub">${isAdmin()?"Admin can edit any player.":"You may edit only your own slot; others are read-only."}</div>
+    <div class="filters"><select class="inp" id="selPlayer">${sel}</select></div>
+    ${me.player_id==null&&!isAdmin()?'<div class="hint" style="border-color:var(--warn)">No player slot assigned to you yet. Ask the admin to link your account to a participant.</div>':note}
+    <div class="stat">
+      <div class="box"><div class="k">Match Pts</div><div class="v">${st.match}</div></div>
+      <div class="box"><div class="k">Champ Bonus</div><div class="v">${st.champBonus}</div></div>
+      <div class="box"><div class="k">Total</div><div class="v" style="color:var(--accent)">${st.total}</div></div>
+      <div class="box"><div class="k">Exact</div><div class="v" style="color:var(--exact)">${st.exact}</div></div>
+      <div class="box"><div class="k">Result Only</div><div class="v" style="color:var(--result)">${st.result}</div></div></div>
+    <table><thead><tr><th style="text-align:right">Home</th><th class="num">Prediction</th><th>Away</th><th class="num">Actual</th><th class="num">Points</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+// ----- Champion -----
+function viewChampion(){
+  const rows=state.players.map(p=>{
+    const pick=state.champ[p.id]||"";
+    const editable=isAdmin()||p.id===me.player_id;
+    const bonus=(pick&&state.settings.actual_champion&&pick===state.settings.actual_champion)?Number(state.settings.champ_bonus):0;
+    return `<div class="champ-row"><div class="nm">${esc(p.name)}${p.id===me.player_id?" (you)":""}</div>
+      <input data-champ="${p.id}" value="${esc(pick)}" placeholder="Champion pick…" ${editable?"":"disabled"}>
+      <div class="num" style="width:70px">${bonus>0?`<span class="pill exact">+${bonus}</span>`:'<span class="muted">0</span>'}</div></div>`;
+  }).join("");
+  return `<div class="card"><h2>Champion Bonus</h2>
+    <div class="sub">Each player names the eventual champion; matching the actual champion adds ${state.settings.champ_bonus} pts.</div>
+    <div class="field" style="max-width:320px"><label>Actual Champion ${isAdmin()?"":"(admin only)"}</label>
+      <input id="actualChamp" value="${esc(state.settings.actual_champion)}" placeholder="Set when the final ends…" ${isAdmin()?"":"disabled"}></div>
+    ${rows}</div>`;
+}
+
+// ----- Settings (admin) -----
+function viewSettings(){
+  const names=state.players.map(p=>`<div class="field"><label>Player ${p.id}</label><input data-pname="${p.id}" value="${esc(p.name)}"></div>`).join("");
+  return `<div class="card"><h2>Scoring Rules</h2><div class="sub">Admin only. Feeds every calculation.</div>
+    <div class="settings-grid">
+      <div class="field"><label>Exact score points</label><input data-set="exact_pts" value="${esc(state.settings.exact_pts)}" inputmode="numeric"></div>
+      <div class="field"><label>Correct result points</label><input data-set="result_pts" value="${esc(state.settings.result_pts)}" inputmode="numeric"></div>
+      <div class="field"><label>Wrong prediction points</label><input data-set="wrong_pts" value="${esc(state.settings.wrong_pts)}" inputmode="numeric"></div>
+      <div class="field"><label>Champion bonus</label><input data-set="champ_bonus" value="${esc(state.settings.champ_bonus)}" inputmode="numeric"></div>
+    </div></div>
+    <div class="card"><h2>Participants</h2><div class="sub">Rename players. Predictions stay attached to each slot.</div>
+    <div class="settings-grid">${names}</div></div>`;
+}
+
+// ----- Admin (assign users to slots) -----
+function viewAdmin(){
+  const slotOpts=id=>`<option value="">— none —</option>`+state.players.map(p=>`<option value="${p.id}" ${id===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
+  const rows=(state.profiles||[]).map(pr=>`<tr>
+    <td>${esc(pr.email||"")}</td>
+    <td><select class="inp" data-prole="${pr.user_id}">
+      <option value="player" ${pr.role==="player"?"selected":""}>player</option>
+      <option value="admin" ${pr.role==="admin"?"selected":""}>admin</option></select></td>
+    <td><select class="inp" data-pslot="${pr.user_id}">${slotOpts(pr.player_id)}</select></td>
+  </tr>`).join("");
+  return `<div class="card"><h2>User Accounts</h2>
+    <div class="sub">Assign each signed-up account to a player slot (or make them an admin). A user can only edit predictions once linked to a slot.</div>
+    <table><thead><tr><th>Email</th><th>Role</th><th>Player slot</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted">No accounts yet.</td></tr>'}</tbody></table>
+    <div class="hint">Tip: each slot should be linked to exactly one account. Players sign up themselves, then you link them here.</div></div>`;
+}
+
+// ===========================================================================
+//  Wiring + DB writes
+// ===========================================================================
+function wire(){
+  const bc=document.getElementById("btnCheck"); if(bc)bc.onclick=()=>{
+    const n=dueMissing().length;
+    if(n===0){ onlyMissing=false; toast("All played matches already have results ✓"); render(); }
+    else { onlyMissing=true; render(); toast(n+" match"+(n===1?"":"es")+" need a score");
+      const f=document.querySelector("#view input[data-match]"); if(f){f.focus();f.scrollIntoView({block:"center",behavior:"smooth"});} }
+  };
+  const ba=document.getElementById("btnShowAll"); if(ba)ba.onclick=()=>{onlyMissing=false;render();};
+  const fs=document.getElementById("fStage"); if(fs)fs.onchange=()=>{matchFilter.stage=fs.value;render();};
+  const fq=document.getElementById("fQ"); if(fq)fq.oninput=()=>{matchFilter.q=fq.value;const c=fq.selectionStart;render();const n=document.getElementById("fQ");if(n){n.focus();n.setSelectionRange(c,c);}};
+  const sp=document.getElementById("selPlayer"); if(sp)sp.onchange=()=>{curPlayer=+sp.value;render();};
+
+  // match results (admin)
+  document.querySelectorAll("input[data-match]").forEach(el=>el.addEventListener("change",async()=>{
+    const id=el.dataset.match, side=el.dataset.side, val=el.value.trim();
+    const m=state.matches.find(x=>x.id===id); const prev=m[side];
+    m[side]= val===""?null:(isNum(val)?Number(val):val);
+    const {error}=await sb.from("matches").update({[side]:m[side]}).eq("id",id);
+    if(error){m[side]=prev; toast(error.message,true);} else toast("Saved");
+    render();
+  }));
+  // predictions
+  document.querySelectorAll("input[data-pred-match]").forEach(el=>el.addEventListener("change",async()=>{
+    const mid=el.dataset.predMatch, side=el.dataset.side, val=el.value.trim();
+    const key=curPlayer+"|"+mid; const cur=state.predMap[key]||{h:null,a:null};
+    const nv={...cur}; nv[side]= val===""?null:(isNum(val)?Number(val):val);
+    state.predMap[key]=nv;
+    const {error}=await sb.from("predictions").upsert({player_id:curPlayer,match_id:mid,home_pred:nv.h,away_pred:nv.a});
+    if(error){toast(error.message,true);} else toast("Saved");
+    render();
+  }));
+  // champion picks
+  document.querySelectorAll("input[data-champ]").forEach(el=>el.addEventListener("change",async()=>{
+    const pid=+el.dataset.champ, val=el.value.trim()||null;
+    state.champ[pid]=val;
+    const {error}=await sb.from("champion_picks").upsert({player_id:pid,pick:val});
+    if(error){toast(error.message,true);} else toast("Saved");
+    render();
+  }));
+  const ac=document.getElementById("actualChamp"); if(ac)ac.addEventListener("change",async()=>{
+    const val=ac.value.trim()||null; state.settings.actual_champion=val;
+    const {error}=await sb.from("settings").update({actual_champion:val}).eq("id",1);
+    if(error)toast(error.message,true); else toast("Saved"); render();
+  });
+  // settings scoring
+  document.querySelectorAll("input[data-set]").forEach(el=>el.addEventListener("change",async()=>{
+    const k=el.dataset.set, val=el.value.trim(); const num=isNum(val)?Number(val):0;
+    state.settings[k]=num;
+    const {error}=await sb.from("settings").update({[k]:num}).eq("id",1);
+    if(error)toast(error.message,true); else toast("Saved"); render();
+  }));
+  // rename players
+  document.querySelectorAll("input[data-pname]").forEach(el=>el.addEventListener("change",async()=>{
+    const id=+el.dataset.pname, name=el.value.trim()||("Player "+id);
+    const p=state.players.find(x=>x.id===id); p.name=name;
+    const {error}=await sb.from("players").update({name}).eq("id",id);
+    if(error)toast(error.message,true); else toast("Saved"); render();
+  }));
+  // admin: role + slot assignment
+  document.querySelectorAll("select[data-prole]").forEach(el=>el.addEventListener("change",async()=>{
+    const uid=el.dataset.prole, role=el.value;
+    const {error}=await sb.from("profiles").update({role}).eq("user_id",uid);
+    if(error){toast(error.message,true);} else {toast("Saved"); const p=state.profiles.find(x=>x.user_id===uid); if(p)p.role=role;}
+  }));
+  document.querySelectorAll("select[data-pslot]").forEach(el=>el.addEventListener("change",async()=>{
+    const uid=el.dataset.pslot, pidv=el.value===""?null:+el.value;
+    const {error}=await sb.from("profiles").update({player_id:pidv}).eq("user_id",uid);
+    if(error){toast(error.message,true);} else {toast("Saved"); const p=state.profiles.find(x=>x.user_id===uid); if(p)p.player_id=pidv;}
+  }));
+}
+</script>
+</body>
+</html>
