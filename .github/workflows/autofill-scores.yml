@@ -1,0 +1,28 @@
+# Place this file at:  .github/workflows/autofill-scores.yml
+name: Auto-fill World Cup scores
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes (GitHub schedules are best-effort and can be delayed)
+  workflow_dispatch: {}        # lets you run it manually from the Actions tab
+
+# avoid overlapping runs
+concurrency:
+  group: autofill-scores
+  cancel-in-progress: false
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Fill finished scores
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          WC_EMAIL: ${{ secrets.WC_EMAIL }}
+          WC_PASSWORD: ${{ secrets.WC_PASSWORD }}
+        run: node autofill-scores.mjs

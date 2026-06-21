@@ -83,6 +83,7 @@
   .koteam.kowin{color:var(--txt);font-weight:700;background:rgba(61,220,151,.09);box-shadow:inset 3px 0 0 var(--accent)}
   .koteam.kowin .kosc{color:var(--accent)}
   .kocap{padding:2px 7px;font-size:8.5px;color:var(--muted);text-align:center;border-top:1px dashed var(--line);letter-spacing:.2px}
+  .koq{color:var(--accent);font-weight:700;margin-right:3px;flex:none}
   /* center Final column */
   .koround.kocenter{justify-content:center}
   .koround.kocenter .korbody{justify-content:center;gap:10px;flex:none;margin:auto 0}
@@ -95,6 +96,12 @@
   .flag{width:1.2em;height:.82em;object-fit:cover;border-radius:2px;margin-right:5px;vertical-align:-1px;box-shadow:0 0 0 .5px rgba(0,0,0,.35);flex:none}
   table.gtable{table-layout:fixed;width:100%}
   table.gtable td.team{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  tr.gthru td{background:rgba(61,220,151,.10)}
+  tr.gthru td.team{color:var(--accent);font-weight:700}
+  tr.gthru td.rank{box-shadow:inset 3px 0 0 var(--accent)}
+  tr.gout td{background:rgba(255,107,107,.10)}
+  tr.gout td.team{color:var(--warn)}
+  tr.gout td.rank{box-shadow:inset 3px 0 0 var(--warn)}
   .scoreline{font-variant-numeric:tabular-nums;font-weight:600}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
   .settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
@@ -165,18 +172,20 @@
     /* stacked-card tables on mobile (Matches & Predictions) */
     table.mtable{font-size:13px}
     table.mtable thead{display:none}
-    table.mtable, table.mtable tbody, table.mtable tr, table.mtable td{display:block;width:100%}
-    table.mtable tr{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:4px 11px;background:var(--panel2)}
+    table.mtable, table.mtable tbody{display:block;width:100%}
+    table.mtable tr{display:flex;flex-wrap:wrap;align-items:center;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:4px 11px;background:var(--panel2)}
     table.mtable tr:hover td{background:transparent}
-    table.mtable td{border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-height:30px}
+    table.mtable td{flex:1 1 100%;border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-height:30px}
     table.mtable td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;text-align:left;flex:none}
-    table.mtable td.team{font-weight:600;justify-content:flex-start;text-align:left}
-    table.mtable td.team::before{min-width:46px}
+    /* Home | score | Away on one centered row */
+    table.mtable td.team{flex:1 1 37%;justify-content:center;text-align:center;font-weight:600;min-height:24px;padding:5px 2px;line-height:1.2}
+    table.mtable td.scell{flex:0 0 auto;justify-content:center;min-height:24px;padding:5px 0}
+    table.mtable td.team::before,table.mtable td.scell::before{display:none}
     table.mtable .cell-in{width:44px}
-    table.mtable tr.stagehdr{background:transparent;border:0;margin:14px 0 2px;padding:0}
+    table.mtable tr.stagehdr{display:block;background:transparent;border:0;margin:14px 0 2px;padding:0}
     table.mtable tr.stagehdr td{display:block;color:var(--accent);font-weight:700;padding:0;min-height:0}
     table.mtable tr.stagehdr td::before{display:none}
-    table.mtable td.center-msg{display:block;text-align:center}
+    table.mtable td.center-msg{flex:1 1 100%;display:block;text-align:center}
     table.mtable td.center-msg::before{display:none}
   }
 </style>
@@ -408,7 +417,21 @@ function teamOptions(selected){
 // ===========================================================================
 function gmatches(M,g){return M.filter(m=>m.stage==="Group "+g);}
 function groupTeams(M,g){const s=new Set();gmatches(M,g).forEach(m=>{s.add(m.home);s.add(m.away);});return[...s];}
-function h2h(played,A,B){let pa=0,pb=0;played.forEach(m=>{if((m.home===A&&m.away===B)||(m.home===B&&m.away===A)){const hs=+m.actual_home,as=+m.actual_away;if(hs>as){if(m.home===A)pa+=3;else pb+=3;}else if(hs<as){if(m.away===A)pa+=3;else pb+=3;}else{pa++;pb++;}}});return pb-pa;}
+// FIFA 2026 ranking: points -> head-to-head (pts, GD, GF among tied teams) -> overall GD -> overall GF -> name
+function rankTeams(arr,played){
+  const byPts={}; arr.forEach(t=>{(byPts[t.Pts]=byPts[t.Pts]||[]).push(t);});
+  const levels=Object.keys(byPts).map(Number).sort((a,b)=>b-a); let out=[];
+  levels.forEach(p=>{
+    const grp=byPts[p];
+    if(grp.length===1){out.push(grp[0]);return;}
+    const set=new Set(grp.map(t=>t.team)); const h={}; grp.forEach(t=>h[t.team]={pts:0,gd:0,gf:0});
+    played.forEach(m=>{ if(set.has(m.home)&&set.has(m.away)){const hs=+m.actual_home,as=+m.actual_away;
+      h[m.home].gf+=hs;h[m.away].gf+=as;h[m.home].gd+=hs-as;h[m.away].gd+=as-hs;
+      if(hs>as)h[m.home].pts+=3;else if(hs<as)h[m.away].pts+=3;else{h[m.home].pts++;h[m.away].pts++;}}});
+    out=out.concat(grp.slice().sort((a,b)=>h[b.team].pts-h[a.team].pts||h[b.team].gd-h[a.team].gd||h[b.team].gf-h[a.team].gf||b.GD-a.GD||b.GF-a.GF||a.team.localeCompare(b.team)));
+  });
+  return out;
+}
 function computeGroupTable(M,g){
   const T={};groupTeams(M,g).forEach(t=>T[t]={team:t,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0});
   const played=[];
@@ -417,10 +440,34 @@ function computeGroupTable(M,g){
     if(hs>as){h.W++;a.L++;h.Pts+=3;}else if(hs<as){a.W++;h.L++;a.Pts+=3;}else{h.D++;a.D++;h.Pts++;a.Pts++;}
     played.push(m);});
   const arr=Object.values(T).map(t=>({...t,GD:t.GF-t.GA}));
-  arr.sort((x,y)=>y.Pts-x.Pts||y.GD-x.GD||y.GF-x.GF||h2h(played,x.team,y.team)||x.team.localeCompare(y.team));
-  return arr;
+  return rankTeams(arr, played);
 }
 function groupReady(M,g){const ms=gmatches(M,g);return ms.length>0&&ms.every(m=>isNum(m.actual_home)&&isNum(m.actual_away));}
+// "through" = clinched top-2; "out" = can't reach group top-3 even by winning remaining games big
+// (4th can't advance even as a best-3rd). Brute-forces remaining results with full FIFA 2026 tiebreakers.
+function groupStatus(M,g){
+  const tbl=computeGroupTable(M,g);
+  const info=tbl.map(t=>{const rem=Math.max(0,3-t.P);return {team:t.team,floor:t.Pts,ceil:t.Pts+3*rem};});
+  const through={}; info.forEach(t=>{through[t.team]=info.filter(o=>o.team!==t.team&&o.ceil>=t.floor).length<=1;});
+  const teams=groupTeams(M,g), gm=gmatches(M,g);
+  const playedBase=gm.filter(m=>isNum(m.actual_home)&&isNum(m.actual_away));
+  const remaining=gm.filter(m=>!(isNum(m.actual_home)&&isNum(m.actual_away)));
+  const n=Math.min(remaining.length,9), total=Math.pow(3,n);
+  const canTop3={};
+  teams.forEach(t=>{ let ok=false;
+    for(let mask=0;mask<total && !ok;mask++){
+      const scen=playedBase.slice(); let x=mask;
+      for(let i=0;i<n;i++){const r=x%3;x=(x-r)/3;const m=remaining[i];const inv=(m.home===t||m.away===t);
+        let hs,as; if(r===0){hs=inv&&m.home===t?5:1;as=0;} else if(r===1){hs=0;as=inv&&m.away===t?5:1;} else {hs=0;as=0;}
+        scen.push({home:m.home,away:m.away,actual_home:hs,actual_away:as});}
+      const st={}; teams.forEach(z=>st[z]={team:z,Pts:0,GF:0,GA:0,GD:0});
+      scen.forEach(m=>{const h=st[m.home],a=st[m.away],hh=+m.actual_home,aa=+m.actual_away;h.GF+=hh;h.GA+=aa;a.GF+=aa;a.GA+=hh;h.GD+=hh-aa;a.GD+=aa-hh;if(hh>aa)h.Pts+=3;else if(hh<aa)a.Pts+=3;else{h.Pts++;a.Pts++;}});
+      if(rankTeams(Object.values(st),scen).findIndex(z=>z.team===t)<3) ok=true;
+    }
+    canTop3[t]=ok; });
+  const st={}; teams.forEach(t=>{ st[t]= through[t] ? "through" : (!canTop3[t] ? "out" : ""); });
+  return st;
+}
 function GROUPS(M){const s=[];M.forEach(m=>{if((m.stage||"").startsWith("Group ")){const g=m.stage.slice(6);if(!s.includes(g))s.push(g);}});return s.sort();}
 function thirdsRank(M){const r=[];GROUPS(M).forEach(g=>{if(groupStarted(M,g)){const t=computeGroupTable(M,g)[2];if(t)r.push({grp:g,...t});}});
   r.sort((x,y)=>y.Pts-x.Pts||y.GD-x.GD||y.GF-x.GF||x.team.localeCompare(y.team));return r;}
@@ -587,7 +634,7 @@ function viewMatches(){
     body+=`<tr>
       <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")}</td>
       <td data-label="Home" class="team" style="text-align:right">${teamCell(m,"home")}</td>
-      <td data-label="Score" class="num"><span class="scoregrp"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></span></td>
+      <td data-label="Score" class="num scell"><span class="scoregrp"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></span></td>
       <td data-label="Away" class="team">${teamCell(m,"away")}</td>
       <td data-label="Winner" class="num">${winCell}</td>
       <td data-label="Status" class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}${m.results_only?' <span class="pill" style="background:rgba(74,163,255,.16);color:var(--accent2)">ref</span>':''}</td></tr>`;
@@ -636,7 +683,7 @@ function viewPlayers(){
     return `<tr>
       <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")} · ${esc(m.stage)}</td>
       <td data-label="Home" class="team" style="text-align:right">${teamCell(m,"home")}</td>
-      <td data-label="Your pick" class="num"><span class="scoregrp"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></span></td>
+      <td data-label="Your pick" class="num scell"><span class="scoregrp"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></span></td>
       <td data-label="Away" class="team">${teamCell(m,"away")}</td>
       <td data-label="Actual" class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
       <td data-label="Points" class="num">${pt}</td></tr>`;
@@ -683,6 +730,9 @@ function viewBracket(){
   const admin=isAdmin();
   const auto=new Set(autoThirdGroups(M));
   const qual=[...thirdGroups(M)].sort();
+  const statusByGroup={}; GROUPS(M).forEach(g=>statusByGroup[g]=groupStatus(M,g));
+  const clinched=new Set();  // teams that have secured a top-2 spot
+  GROUPS(M).forEach(g=>{const st=statusByGroup[g];for(const tm in st) if(st[tm]==="through") clinched.add(tm);});
   // Knockout tree — classic two-sided bracket: left half | Final | mirrored right half
   const koLabel={"Round Of 32":"Round of 32","Round Of 16":"Round of 16","Quarterfinal":"Quarter-finals","Semifinal":"Semi-finals","3Rd Place Playoff":"Third place","Final":"Final"};
   const byId={}; state.matches.forEach(m=>byId[m.id]=m);
@@ -691,13 +741,15 @@ function viewBracket(){
   let ordOf=()=>0;
   const koCard=m=>{
     const info=matchInfo(m);
+    const hClinch=clinched.has(tname(m,"home"))?'<span class="koq">✓</span>':"";
+    const aClinch=clinched.has(tname(m,"away"))?'<span class="koq">✓</span>':"";
     const hn=teamCell(m,"home"), an=teamCell(m,"away");
     let ws=null,pens=false;
     if(info.completed){ if(info.result==="Home")ws="home"; else if(info.result==="Away")ws="away"; else if(m.pen_winner){ws=m.pen_winner.toLowerCase();pens=true;} }
     const hs=info.completed?esc(m.actual_home):"", as=info.completed?esc(m.actual_away):"";
     const cap=info.completed?(pens?'<div class="kocap">decided on penalties</div>':"")
       :`<div class="kocap">${esc((m.match_date||"").slice(5))}${m.kickoff?(" · "+esc(m.kickoff)):""}</div>`;
-    return `<div class="komatch"><div class="koteam ${ws==="home"?'kowin':''}"><span class="kon">${hn}</span><span class="kosc">${hs}</span></div><div class="koteam ${ws==="away"?'kowin':''}"><span class="kon">${an}</span><span class="kosc">${as}</span></div>${cap}</div>`;
+    return `<div class="komatch"><div class="koteam ${ws==="home"?'kowin':''}"><span class="kon">${hClinch}${hn}</span><span class="kosc">${hs}</span></div><div class="koteam ${ws==="away"?'kowin':''}"><span class="kon">${aClinch}${an}</span><span class="kosc">${as}</span></div>${cap}</div>`;
   };
   const koCol=(stage,set,rev)=>{
     const ms=state.matches.filter(m=>m.stage===stage&&(!set||set.has(m.id)));
@@ -728,7 +780,9 @@ function viewBracket(){
     const meta=gmeta()[g]||{mode:"auto",third_in:"auto"};
     const manual=meta.mode==="manual";
     const tOpts=sel=>`<option value="">—</option>`+groupTeams(M,g).map(t=>`<option ${t===sel?"selected":""}>${esc(t)}</option>`).join("");
-    const rows=tbl.map((t,i)=>`<tr><td class="rank ${i<2?'r1':(i===2?'r3':'')}">${i+1}</td><td class="team">${flagHtml(t.team)}${esc(t.team)}</td><td class="num">${t.P}</td><td class="num">${t.W}-${t.D}-${t.L}</td><td class="num">${t.GD>0?'+':''}${t.GD}</td><td class="num"><b>${t.Pts}</b></td></tr>`).join("");
+    const stat=statusByGroup[g];
+    const rows=tbl.map((t,i)=>{const s=stat[t.team]||"";const cls=s==="through"?"gthru":s==="out"?"gout":"";
+      return `<tr class="${cls}"><td class="rank ${i<2?'r1':(i===2?'r3':'')}">${i+1}</td><td class="team">${flagHtml(t.team)}${esc(t.team)}</td><td class="num">${t.P}</td><td class="num">${t.W}-${t.D}-${t.L}</td><td class="num">${t.GD>0?'+':''}${t.GD}</td><td class="num"><b>${t.Pts}</b></td></tr>`;}).join("");
     const controls = admin ? `<div class="filters" style="margin-top:10px;align-items:center">
         <span class="muted">Qualifiers:</span>
         <select class="inp" data-gm="${g}" data-pos="mode"><option value="auto" ${!manual?"selected":""}>Auto (from table)</option><option value="manual" ${manual?"selected":""}>Manual</option></select>
@@ -752,7 +806,8 @@ function viewBracket(){
     </div>
     <div class="kofit"><div class="kowrap">${ko||'<span class="muted">No knockout matches yet.</span>'}</div></div></div>
     <div class="card"><h2>Group Standings</h2>
-    <div class="sub">${admin?"Live tables. Switch any group to Manual to override 1st / 2nd / 3rd.":"Live group tables — updated as results come in."}</div>
+    <div class="sub">${admin?"Live tables. Switch any group to Manual to override 1st / 2nd / 3rd.":"Live group tables — updated as results come in."}
+      &nbsp;·&nbsp; <b style="color:var(--accent)">▎through</b> = secured top 2 &nbsp;·&nbsp; <b style="color:var(--warn)">▎out</b> = eliminated</div>
     <div class="hint">Best-3rd-place groups currently qualifying (need 8): <b>${qual.join(", ")||"—"}</b>${qual.length!==8?` <span style="color:var(--warn)">(${qual.length}/8)</span>`:""}</div>
     </div>${cards}`;
 }
