@@ -170,7 +170,8 @@
     table.mtable tr:hover td{background:transparent}
     table.mtable td{border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-height:30px}
     table.mtable td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;text-align:left;flex:none}
-    table.mtable td.team{font-weight:600}
+    table.mtable td.team{font-weight:600;justify-content:flex-start;text-align:left}
+    table.mtable td.team::before{min-width:46px}
     table.mtable .cell-in{width:44px}
     table.mtable tr.stagehdr{background:transparent;border:0;margin:14px 0 2px;padding:0}
     table.mtable tr.stagehdr td{display:block;color:var(--accent);font-weight:700;padding:0;min-height:0}
