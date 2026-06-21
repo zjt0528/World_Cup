@@ -68,6 +68,7 @@
   .filters input[type=text],.filters select,select.inp,input.inp{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:7px 10px;border-radius:8px}
   .muted{color:var(--muted)}
   .vs{color:var(--muted);padding:0 4px}
+  .scoregrp{display:inline-flex;align-items:center}
   .team{font-weight:500}
   .scoreline{font-variant-numeric:tabular-nums;font-weight:600}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
@@ -102,6 +103,54 @@
   .spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
   @keyframes spin{to{transform:rotate(360deg)}}
   .center-msg{text-align:center;padding:60px 20px;color:var(--muted)}
+  /* ---------- Mobile ---------- */
+  @media (max-width:640px){
+    body{font-size:13px}
+    header{padding:11px 13px}
+    header h1{font-size:15px}
+    .whoami{font-size:11px;gap:7px;width:100%;justify-content:space-between}
+    .whoami>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%}
+    nav{padding:0 8px}
+    nav .tab{padding:11px 11px}
+    main{padding:12px}
+    .card{padding:13px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .card h2{font-size:15px}
+    table{font-size:12px}
+    th{font-size:10px}
+    th,td{padding:6px 6px}
+    .cell-in{width:34px;padding:4px 2px}
+    .vs{padding:0 2px}
+    .stat{gap:8px}
+    .stat .box{min-width:0;flex:1 1 30%;padding:8px 9px}
+    .stat .box .v{font-size:17px}
+    .bar-name{width:82px;font-size:12px}
+    .bar-val{width:34px}
+    .legend{font-size:11px;gap:8px}
+    .filters{gap:6px}
+    .filters input[type=text],.filters select,select.inp,input.inp{padding:8px 9px}
+    .settings-grid{grid-template-columns:1fr}
+    .champ-row{flex-wrap:wrap;gap:6px}
+    .champ-row .nm{width:100%}
+    .champ-row input,.champ-row select{max-width:100%;width:100%}
+    .auth-wrap{padding:14px}
+    .auth-card{padding:20px}
+    .toast{bottom:14px;font-size:13px}
+    /* stacked-card tables on mobile (Matches & Predictions) */
+    table.mtable{font-size:13px}
+    table.mtable thead{display:none}
+    table.mtable, table.mtable tbody, table.mtable tr, table.mtable td{display:block;width:100%}
+    table.mtable tr{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:4px 11px;background:var(--panel2)}
+    table.mtable tr:hover td{background:transparent}
+    table.mtable td{border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-height:30px}
+    table.mtable td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;text-align:left;flex:none}
+    table.mtable td.team{font-weight:600}
+    table.mtable .cell-in{width:44px}
+    table.mtable tr.stagehdr{background:transparent;border:0;margin:14px 0 2px;padding:0}
+    table.mtable tr.stagehdr td{display:block;color:var(--accent);font-weight:700;padding:0;min-height:0}
+    table.mtable tr.stagehdr td::before{display:none}
+    table.mtable td.center-msg{display:block;text-align:center}
+    table.mtable td.center-msg::before{display:none}
+  }
 </style>
 </head>
 <body>
@@ -128,7 +177,7 @@ function setCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
 
 let sb=null, user=null, me=null;
 let state=null;
-let TAB="leaderboard", curPlayer=null, matchFilter={stage:"",q:""}, authMode="signin", onlyMissing=false;
+let TAB="leaderboard", curPlayer=null, matchFilter={stage:"",q:""}, authMode="signin", onlyMissing=false, showFinishedPred=false;
 
 const root=()=>document.getElementById("root");
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
@@ -140,6 +189,8 @@ function toast(msg,err){const t=document.getElementById("toast");t.textContent=m
 window.addEventListener("DOMContentLoaded", init);
 async function init(){
   const cfg=getCfg();
+  // Admin escape hatch: open the page with #dbsettings to change the connection.
+  if(location.hash==="#dbsettings"){ return renderConfig(); }
   if(!cfg||!cfg.url||!cfg.key){ return renderConfig(); }
   try{
     sb=window.supabase.createClient(cfg.url, cfg.key);
@@ -168,7 +219,7 @@ function renderConfig(errMsg){
     const url=document.getElementById("cfgUrl").value.trim().replace(/\/+$/,"");
     const key=document.getElementById("cfgKey").value.trim();
     if(!url||!key) return toast("Enter both fields",true);
-    setCfg({url,key}); init();
+    setCfg({url,key}); if(location.hash)location.hash=""; init();
   };
 }
 
@@ -186,10 +237,8 @@ function renderAuth(){
     <button class="btn primary" id="auGo">${signup?"Sign up":"Sign in"}</button>
     <div class="switch">${signup?"Already have an account? ":"New here? "}
       <a id="auSwitch">${signup?"Sign in":"Create an account"}</a></div>
-    <div class="switch"><a id="auCfg" class="muted">Change database settings</a></div>
   </div></div>`;
   document.getElementById("auSwitch").onclick=()=>{authMode=signup?"signin":"signup";renderAuth();};
-  document.getElementById("auCfg").onclick=()=>renderConfig();
   document.getElementById("auGo").onclick=doAuth;
   document.getElementById("auPass").addEventListener("keydown",e=>{if(e.key==="Enter")doAuth();});
 }
@@ -241,11 +290,14 @@ async function loadAll(){
   const predMap={}; (pr.data||[]).forEach(p=>predMap[p.player_id+"|"+p.match_id]={h:p.home_pred,a:p.away_pred});
   const champ={}; (ch.data||[]).forEach(c=>champ[c.player_id]=c.pick);
   state={ settings:se.data||{exact_pts:2,result_pts:1,wrong_pts:0,champ_bonus:0,actual_champion:null},
-          players:pl.data||[], matches:ma.data||[], predMap, champ, profiles:[] };
+          players:pl.data||[], matches:sortMatches(ma.data||[]), predMap, champ, profiles:[] };
   if(me.role==="admin"){
     const {data:profs,error}=await sb.from("profiles").select("*").order("created_at");
     if(!error) state.profiles=profs||[];
   }
+  // group_meta drives bracket resolution; tolerate absence (upgrade not run yet)
+  state.groupMeta={};
+  try{ const {data:gm}=await sb.from("group_meta").select("*"); (gm||[]).forEach(r=>state.groupMeta[r.grp]=r); }catch(e){}
 }
 async function signOut(){ await sb.auth.signOut(); }
 window.signOut=signOut;
@@ -266,6 +318,7 @@ function pointsFor(hp,ap,ah,aa){
 function playerStats(pid){
   let match=0,exact=0,result=0;
   state.matches.forEach(m=>{
+    if(m.results_only) return;            // reference matches are not predicted/scored
     const p=pred(pid,m.id);
     const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
     if(r){match+=r.pts; if(r.type==="exact")exact++; else if(r.type==="result")result++;}
@@ -282,10 +335,88 @@ function matchInfo(m){
   if(!isNum(m.actual_home)||!isNum(m.actual_away)) return {result:"",winner:"",completed:false};
   const ah=+m.actual_home,aa=+m.actual_away;
   const result=ah>aa?"Home":(ah<aa?"Away":"Draw");
-  return {result,winner:result==="Home"?m.home:(result==="Away"?m.away:"Draw"),completed:true};
+  return {result,winner:result==="Home"?tname(m,"home"):(result==="Away"?tname(m,"away"):"Draw"),completed:true};
 }
 function stages(){const s=[];state.matches.forEach(m=>{if(!s.includes(m.stage))s.push(m.stage);});return s;}
 const isAdmin=()=>me&&me.role==="admin";
+// order matches by stage (groups A..L, then knockout), then date/time
+function stageRank(s){s=s||"";if(s.startsWith("Group "))return s.charCodeAt(6);
+  const ko=["Round Of 32","Round Of 16","Quarterfinal","Semifinal","3Rd Place Playoff","Final"];
+  const i=ko.indexOf(s);return 200+(i<0?99:i);}
+function sortMatches(arr){return arr.sort((a,b)=>stageRank(a.stage)-stageRank(b.stage)
+  ||String(a.match_date||"").localeCompare(String(b.match_date||""))
+  ||String(a.kickoff||"").localeCompare(String(b.kickoff||""))
+  ||String(a.id).localeCompare(String(b.id)));}
+// Unique list of real team names (excludes TBD placeholders) for champion dropdowns.
+function teamList(){
+  const s=new Set();
+  state.matches.forEach(m=>{[m.home,m.away].forEach(t=>{ if(t && !/^TBD/i.test(t.trim())) s.add(t); });});
+  return Array.from(s).sort((a,b)=>a.localeCompare(b));
+}
+function teamOptions(selected){
+  return `<option value="">— pick a team —</option>`+teamList().map(t=>`<option ${t===selected?"selected":""}>${esc(t)}</option>`).join("");
+}
+
+// ===========================================================================
+//  Bracket resolution engine (group tables, best thirds, knockout propagation)
+// ===========================================================================
+function gmatches(M,g){return M.filter(m=>m.stage==="Group "+g);}
+function groupTeams(M,g){const s=new Set();gmatches(M,g).forEach(m=>{s.add(m.home);s.add(m.away);});return[...s];}
+function h2h(played,A,B){let pa=0,pb=0;played.forEach(m=>{if((m.home===A&&m.away===B)||(m.home===B&&m.away===A)){const hs=+m.actual_home,as=+m.actual_away;if(hs>as){if(m.home===A)pa+=3;else pb+=3;}else if(hs<as){if(m.away===A)pa+=3;else pb+=3;}else{pa++;pb++;}}});return pb-pa;}
+function computeGroupTable(M,g){
+  const T={};groupTeams(M,g).forEach(t=>T[t]={team:t,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0});
+  const played=[];
+  gmatches(M,g).forEach(m=>{if(!isNum(m.actual_home)||!isNum(m.actual_away))return;const h=T[m.home],a=T[m.away],hs=+m.actual_home,as=+m.actual_away;
+    h.P++;a.P++;h.GF+=hs;h.GA+=as;a.GF+=as;a.GA+=hs;
+    if(hs>as){h.W++;a.L++;h.Pts+=3;}else if(hs<as){a.W++;h.L++;a.Pts+=3;}else{h.D++;a.D++;h.Pts++;a.Pts++;}
+    played.push(m);});
+  const arr=Object.values(T).map(t=>({...t,GD:t.GF-t.GA}));
+  arr.sort((x,y)=>y.Pts-x.Pts||y.GD-x.GD||y.GF-x.GF||h2h(played,x.team,y.team)||x.team.localeCompare(y.team));
+  return arr;
+}
+function groupReady(M,g){const ms=gmatches(M,g);return ms.length>0&&ms.every(m=>isNum(m.actual_home)&&isNum(m.actual_away));}
+function GROUPS(M){const s=[];M.forEach(m=>{if((m.stage||"").startsWith("Group ")){const g=m.stage.slice(6);if(!s.includes(g))s.push(g);}});return s.sort();}
+function thirdsRank(M){const r=[];GROUPS(M).forEach(g=>{if(groupStarted(M,g)){const t=computeGroupTable(M,g)[2];if(t)r.push({grp:g,...t});}});
+  r.sort((x,y)=>y.Pts-x.Pts||y.GD-x.GD||y.GF-x.GF||x.team.localeCompare(y.team));return r;}
+function autoThirdGroups(M){return thirdsRank(M).slice(0,8).map(t=>t.grp);}
+function gmeta(){return state.groupMeta||{};}
+function groupStarted(M,g){return gmatches(M,g).some(m=>isNum(m.actual_home)&&isNum(m.actual_away));}
+// Provisional standings: show the current table position once a group has any result,
+// so the knockout names reflect the live bracket and update after every game.
+function gpos(M,g,n){const mm=gmeta()[g]||{mode:"auto"};if(mm.mode==="manual")return mm["pos"+n]||null;
+  if(!groupStarted(M,g))return null;const t=computeGroupTable(M,g)[n-1];return t?t.team:null;}
+function thirdGroups(M){const auto=new Set(autoThirdGroups(M));const set=new Set();
+  GROUPS(M).forEach(g=>{const ti=(gmeta()[g]||{}).third_in||"auto";if(ti==="yes")set.add(g);else if(ti==="no"){}else if(auto.has(g))set.add(g);});return set;}
+function parseSlot(text){if(!text)return{type:"fixed",team:text};let m;
+  if(m=text.match(/1st Group ([A-L])\b/))return{type:"pos",grp:m[1],n:1};
+  if(m=text.match(/2nd Group ([A-L])\b/))return{type:"pos",grp:m[1],n:2};
+  if(m=text.match(/3rd Group ([A-L/]+)\)/))return{type:"third",allowed:new Set(m[1].split("/"))};
+  if(m=text.match(/Winner of (\d+)/))return{type:"winner",id:m[1]};
+  if(m=text.match(/Loser of (\d+)/))return{type:"loser",id:m[1]};
+  return{type:"fixed",team:text};}
+function assignThirds(M,slots){
+  const qG=[...thirdGroups(M)].filter(g=>gpos(M,g,3));
+  const slotAssigned={};
+  function tryA(g,seen){for(let i=0;i<slots.length;i++){if(!slots[i].allowed.has(g)||seen.has(i))continue;seen.add(i);
+    if(slotAssigned[i]===undefined||tryA(slotAssigned[i],seen)){slotAssigned[i]=g;return true;}}return false;}
+  qG.forEach(g=>tryA(g,new Set()));
+  const res={};for(const i in slotAssigned){const g=slotAssigned[i];res[slots[i].matchId+"|"+slots[i].side]=gpos(M,g,3);}return res;}
+function resolveAll(M){
+  const byId={};M.forEach(m=>byId[m.id]=m);
+  const slots=[];M.filter(m=>m.stage==="Round Of 32").forEach(m=>["home","away"].forEach(side=>{
+    const p=parseSlot(side==="home"?m.home:m.away);if(p.type==="third")slots.push({matchId:m.id,side,allowed:p.allowed});}));
+  const tA=assignThirds(M,slots);
+  const memo={};
+  function resolve(id,side){const k=id+"|"+side;if(k in memo)return memo[k];memo[k]=null;
+    const m=byId[id];if(!m)return null;const text=side==="home"?m.home:m.away;const p=parseSlot(text);let out=null;
+    if(p.type==="fixed")out=p.team;else if(p.type==="pos")out=gpos(M,p.grp,p.n);
+    else if(p.type==="third")out=tA[k]||null;else if(p.type==="winner")out=winner(p.id);else if(p.type==="loser")out=loser(p.id);
+    memo[k]=out;return out;}
+  function winner(id){const m=byId[id];if(!m||!isNum(m.actual_home)||!isNum(m.actual_away))return null;const hs=+m.actual_home,as=+m.actual_away;let w=hs>as?"home":hs<as?"away":((m.pen_winner||"").toLowerCase()==="home"?"home":(m.pen_winner||"").toLowerCase()==="away"?"away":null);return w?resolve(id,w):null;}
+  function loser(id){const m=byId[id];if(!m||!isNum(m.actual_home)||!isNum(m.actual_away))return null;const hs=+m.actual_home,as=+m.actual_away;let l=hs>as?"away":hs<as?"home":((m.pen_winner||"").toLowerCase()==="home"?"away":(m.pen_winner||"").toLowerCase()==="away"?"home":null);return l?resolve(id,l):null;}
+  const out={};M.forEach(m=>{out[m.id+"|home"]=resolve(m.id,"home");out[m.id+"|away"]=resolve(m.id,"away");});return out;}
+let RES={};
+function tname(m,side){return RES[m.id+"|"+side]||(side==="home"?m.home:m.away);}
 
 // Combine match_date + kickoff into a Date (treated as local time). Null if no date.
 function matchDateTime(m){
@@ -307,9 +438,10 @@ function dueMissing(){ return state.matches.filter(matchDueMissing); }
 //  Shell + tabs
 // ===========================================================================
 function render(){
+  RES=resolveAll(state.matches);
   const slotName=me.player_id!=null?(state.players.find(p=>p.id===me.player_id)||{}).name:null;
   const tabsArr=[["leaderboard","Leaderboard"],["matches","Matches & Results"],["players","Predictions"],["champion","Champion"]];
-  if(isAdmin()){ tabsArr.push(["settings","Settings"]); tabsArr.push(["admin","Admin"]); }
+  if(isAdmin()){ tabsArr.push(["bracket","Bracket"]); tabsArr.push(["settings","Settings"]); tabsArr.push(["admin","Admin"]); }
   root().innerHTML=`
   <header>
     <h1>🏆 World Cup 2026 — <span>Prediction Pool</span></h1>
@@ -327,6 +459,7 @@ function render(){
   else if(TAB==="matches") v.innerHTML=viewMatches();
   else if(TAB==="players") v.innerHTML=viewPlayers();
   else if(TAB==="champion") v.innerHTML=viewChampion();
+  else if(TAB==="bracket") v.innerHTML=viewBracket();
   else if(TAB==="settings") v.innerHTML=viewSettings();
   else if(TAB==="admin") v.innerHTML=viewAdmin();
   wire();
@@ -346,9 +479,10 @@ function viewLeaderboard(){
   const bars=lb.map(r=>`<div class="bar-wrap"><div class="bar-name">${esc(r.name)}</div>
     <div class="bar-track"><div class="bar-fill" style="width:${(r.total/max*100).toFixed(1)}%"></div></div>
     <div class="bar-val">${r.total}</div></div>`).join("");
-  const done=state.matches.filter(m=>matchInfo(m).completed).length;
+  const predMatches=state.matches.filter(m=>!m.results_only);
+  const done=predMatches.filter(m=>matchInfo(m).completed).length;
   return `<div class="card"><h2>Standings</h2>
-    <div class="sub">Total = match points + champion bonus. ${done}/${state.matches.length} matches completed. Live for everyone.</div>
+    <div class="sub">Total = match points + champion bonus. ${done}/${predMatches.length} matches completed. Live for everyone.</div>
     <table><thead><tr><th class="num">#</th><th>Participant</th><th class="num">Match Pts</th><th class="num">Champ Bonus</th><th class="num">Total</th><th class="num">Exact</th><th class="num">Result Only</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div class="legend"><span><b style="color:var(--exact)">Exact</b> = correct scoreline (${state.settings.exact_pts} pts)</span>
@@ -370,15 +504,25 @@ function viewMatches(){
     if(m.stage!==last){last=m.stage;body+=`<tr class="stagehdr"><td colspan="6">${esc(m.stage)}</td></tr>`;}
     const info=matchInfo(m);
     const dis=adminCan?"":"disabled";
+    const isKO=!(m.stage||"").startsWith("Group");
+    const drawn=info.completed&&info.result==="Draw";
+    let winCell;
+    if(!info.completed) winCell='<span class="muted">—</span>';
+    else if(isKO&&drawn){
+      winCell=adminCan
+        ? `<select class="inp" data-pen="${esc(m.id)}" style="padding:3px 6px">
+             <option value="">who advanced?</option>
+             <option value="Home" ${m.pen_winner==="Home"?"selected":""}>${esc(tname(m,"home"))} (pens)</option>
+             <option value="Away" ${m.pen_winner==="Away"?"selected":""}>${esc(tname(m,"away"))} (pens)</option></select>`
+        : (m.pen_winner?`<span class="winner">${esc(tname(m,m.pen_winner.toLowerCase()))} (pens)</span>`:'<span class="muted">pens</span>');
+    } else winCell=`<span class="winner">${esc(info.winner)}</span>`;
     body+=`<tr>
-      <td class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")}</td>
-      <td class="team" style="text-align:right">${esc(m.home)}</td>
-      <td class="num"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}>
-        <span class="vs">:</span>
-        <input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></td>
-      <td class="team">${esc(m.away)}</td>
-      <td class="num">${info.completed?`<span class="winner">${esc(info.winner)}</span>`:'<span class="muted">—</span>'}</td>
-      <td class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}</td></tr>`;
+      <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")}</td>
+      <td data-label="Home" class="team" style="text-align:right">${esc(tname(m,"home"))}</td>
+      <td data-label="Score" class="num"><span class="scoregrp"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></span></td>
+      <td data-label="Away" class="team">${esc(tname(m,"away"))}</td>
+      <td data-label="Winner" class="num">${winCell}</td>
+      <td data-label="Status" class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}${m.results_only?' <span class="pill" style="background:rgba(74,163,255,.16);color:var(--accent2)">ref</span>':''}</td></tr>`;
   });
   const nMiss=adminCan?dueMissing().length:0;
   const checker=adminCan?`<div class="checkbar">
@@ -394,7 +538,7 @@ function viewMatches(){
     <div class="filters" ${onlyMissing?'style="display:none"':""}><select class="inp" id="fStage">${opts}</select>
       <input type="text" id="fQ" placeholder="Search team / stage…" value="${esc(matchFilter.q)}">
       <span class="muted">${state.matches.length} fixtures</span></div>
-    <table><thead><tr><th>Date</th><th style="text-align:right">Home</th><th class="num">Score</th><th>Away</th><th class="num">Winner</th><th class="num">Status</th></tr></thead>
+    <table class="mtable"><thead><tr><th>Date</th><th style="text-align:right">Home</th><th class="num">Score</th><th>Away</th><th class="num">Winner</th><th class="num">Status</th></tr></thead>
     <tbody>${body}${empty}</tbody></table></div>`;
 }
 
@@ -404,28 +548,39 @@ function viewPlayers(){
   const editable=isAdmin()||curPlayer===me.player_id;
   const st=playerStats(curPlayer);
   const sel=state.players.map(p=>`<option value="${p.id}" ${p.id===curPlayer?"selected":""}>${esc(p.name)}${p.id===me.player_id?" (you)":""}</option>`).join("");
-  let last=null,body="";
-  state.matches.forEach(m=>{
+  const locked=m=>{const info=matchInfo(m);if(info.completed)return true;const dt=matchDateTime(m);return dt!=null&&dt.getTime()<=Date.now();};
+  const list=state.matches.filter(m=>!m.results_only).slice().sort((a,b)=>
+    String(a.match_date||"").localeCompare(String(b.match_date||""))
+    ||String(a.kickoff||"").localeCompare(String(b.kickoff||""))
+    ||stageRank(a.stage)-stageRank(b.stage));
+  const openList=list.filter(m=>!locked(m));
+  const shown=showFinishedPred?list:openList;
+  let body=shown.map(m=>{
     const p=pred(curPlayer,m.id);
-    if(m.stage!==last){last=m.stage;body+=`<tr class="stagehdr"><td colspan="5">${esc(m.stage)}</td></tr>`;}
     const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
     const info=matchInfo(m);
-    let pt='<span class="pill pending">—</span>';
+    const lk=locked(m);
+    let pt;
     if(r) pt=r.type==="exact"?`<span class="pill exact">+${r.pts} exact</span>`:r.type==="result"?`<span class="pill result">+${r.pts} result</span>`:`<span class="pill wrong">+${r.pts}</span>`;
-    const dis=editable?"":"disabled";
-    body+=`<tr><td class="team" style="text-align:right">${esc(m.home)}</td>
-      <td class="num"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}>
-      <span class="vs">:</span>
-      <input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></td>
-      <td class="team">${esc(m.away)}</td>
-      <td class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
-      <td class="num">${pt}</td></tr>`;
-  });
-  const note = editable ? `<div class="hint">You're editing ${curPlayer===me.player_id?"your own":"this player's"} predictions. Changes save automatically.</div>`
+    else pt=lk?'<span class="pill pending">locked</span>':'<span class="muted">—</span>';
+    const canEdit=editable&&(isAdmin()||!lk);
+    const dis=canEdit?"":"disabled";
+    return `<tr>
+      <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")} · ${esc(m.stage)}</td>
+      <td data-label="Home" class="team" style="text-align:right">${esc(tname(m,"home"))}</td>
+      <td data-label="Your pick" class="num"><span class="scoregrp"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></span></td>
+      <td data-label="Away" class="team">${esc(tname(m,"away"))}</td>
+      <td data-label="Actual" class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
+      <td data-label="Points" class="num">${pt}</td></tr>`;
+  }).join("");
+  if(!body) body=`<tr><td colspan="6" class="center-msg" style="padding:30px">${showFinishedPred?"No matches yet.":"🎉 All caught up — no upcoming games to predict right now. Tick “Show finished games” to review your picks."}</td></tr>`;
+  const note = editable ? `<div class="hint">${isAdmin()?"Editing "+(curPlayer===me.player_id?"your own":"this player's")+" predictions.":"Predict the upcoming games below — your picks lock at kick-off. Tick “Show finished games” to review past matches."}</div>`
     : `<div class="hint">Viewing only. You can edit predictions for your own slot.</div>`;
   return `<div class="card"><h2>Predictions</h2>
-    <div class="sub">${isAdmin()?"Admin can edit any player.":"You may edit only your own slot; others are read-only."}</div>
-    <div class="filters"><select class="inp" id="selPlayer">${sel}</select></div>
+    <div class="sub">${isAdmin()?"Admin can edit any player (including locked games).":"Soonest games first. Picks lock once a match kicks off."}</div>
+    <div class="filters"><select class="inp" id="selPlayer">${sel}</select>
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="togFinished" ${showFinishedPred?"checked":""}> Show finished games</label>
+      <span class="muted">${openList.length} to predict</span></div>
     ${me.player_id==null&&!isAdmin()?'<div class="hint" style="border-color:var(--warn)">No player slot assigned to you yet. Ask the admin to link your account to a participant.</div>':note}
     <div class="stat">
       <div class="box"><div class="k">Match Pts</div><div class="v">${st.match}</div></div>
@@ -433,7 +588,7 @@ function viewPlayers(){
       <div class="box"><div class="k">Total</div><div class="v" style="color:var(--accent)">${st.total}</div></div>
       <div class="box"><div class="k">Exact</div><div class="v" style="color:var(--exact)">${st.exact}</div></div>
       <div class="box"><div class="k">Result Only</div><div class="v" style="color:var(--result)">${st.result}</div></div></div>
-    <table><thead><tr><th style="text-align:right">Home</th><th class="num">Prediction</th><th>Away</th><th class="num">Actual</th><th class="num">Points</th></tr></thead>
+    <table class="mtable"><thead><tr><th>When</th><th style="text-align:right">Home</th><th class="num">Prediction</th><th>Away</th><th class="num">Actual</th><th class="num">Points</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
 }
 
@@ -444,14 +599,47 @@ function viewChampion(){
     const editable=isAdmin()||p.id===me.player_id;
     const bonus=(pick&&state.settings.actual_champion&&pick===state.settings.actual_champion)?Number(state.settings.champ_bonus):0;
     return `<div class="champ-row"><div class="nm">${esc(p.name)}${p.id===me.player_id?" (you)":""}</div>
-      <input data-champ="${p.id}" value="${esc(pick)}" placeholder="Champion pick…" ${editable?"":"disabled"}>
+      <select class="inp" data-champ="${p.id}" style="flex:1;max-width:260px" ${editable?"":"disabled"}>${teamOptions(pick)}</select>
       <div class="num" style="width:70px">${bonus>0?`<span class="pill exact">+${bonus}</span>`:'<span class="muted">0</span>'}</div></div>`;
   }).join("");
   return `<div class="card"><h2>Champion Bonus</h2>
-    <div class="sub">Each player names the eventual champion; matching the actual champion adds ${state.settings.champ_bonus} pts.</div>
+    <div class="sub">Each player picks the eventual champion from the dropdown; matching the actual champion adds ${state.settings.champ_bonus} pts.</div>
     <div class="field" style="max-width:320px"><label>Actual Champion ${isAdmin()?"":"(admin only)"}</label>
-      <input id="actualChamp" value="${esc(state.settings.actual_champion)}" placeholder="Set when the final ends…" ${isAdmin()?"":"disabled"}></div>
+      <select id="actualChamp" class="inp" ${isAdmin()?"":"disabled"}>${teamOptions(state.settings.actual_champion||"")}</select></div>
     ${rows}</div>`;
+}
+
+// ----- Bracket / Group Standings (admin) -----
+function viewBracket(){
+  const M=state.matches;
+  const auto=new Set(autoThirdGroups(M));
+  const qual=[...thirdGroups(M)].sort();
+  const cards=GROUPS(M).map(g=>{
+    const tbl=computeGroupTable(M,g);
+    const ready=groupReady(M,g);
+    const meta=gmeta()[g]||{mode:"auto",third_in:"auto"};
+    const manual=meta.mode==="manual";
+    const tOpts=sel=>`<option value="">—</option>`+groupTeams(M,g).map(t=>`<option ${t===sel?"selected":""}>${esc(t)}</option>`).join("");
+    const rows=tbl.map((t,i)=>`<tr><td class="rank ${i<2?'r1':(i===2?'r3':'')}">${i+1}</td><td class="team">${esc(t.team)}</td><td class="num">${t.P}</td><td class="num">${t.W}-${t.D}-${t.L}</td><td class="num">${t.GD>0?'+':''}${t.GD}</td><td class="num"><b>${t.Pts}</b></td></tr>`).join("");
+    return `<div class="card"><h2>Group ${g} ${ready?'<span class="pill done">complete</span>':'<span class="pill pending">in progress</span>'}</h2>
+      <table><thead><tr><th class="num">#</th><th>Team</th><th class="num">P</th><th class="num">W-D-L</th><th class="num">GD</th><th class="num">Pts</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="filters" style="margin-top:10px;align-items:center">
+        <span class="muted">Qualifiers:</span>
+        <select class="inp" data-gm="${g}" data-pos="mode"><option value="auto" ${!manual?"selected":""}>Auto (from table)</option><option value="manual" ${manual?"selected":""}>Manual</option></select>
+        ${manual?`<span class="muted">1st</span><select class="inp" data-gm="${g}" data-pos="pos1">${tOpts(meta.pos1)}</select>
+                  <span class="muted">2nd</span><select class="inp" data-gm="${g}" data-pos="pos2">${tOpts(meta.pos2)}</select>
+                  <span class="muted">3rd</span><select class="inp" data-gm="${g}" data-pos="pos3">${tOpts(meta.pos3)}</select>`:""}
+        <span class="muted">3rd qualifies:</span>
+        <select class="inp" data-gm="${g}" data-pos="third_in">
+          <option value="auto" ${(meta.third_in||"auto")==="auto"?"selected":""}>Auto (${auto.has(g)?"in":"out"})</option>
+          <option value="yes" ${meta.third_in==="yes"?"selected":""}>Yes</option>
+          <option value="no" ${meta.third_in==="no"?"selected":""}>No</option></select>
+      </div></div>`;
+  }).join("");
+  return `<div class="card"><h2>Bracket / Group Standings</h2>
+    <div class="sub">Group tables compute live from entered results, and the knockout names always reflect the <b>current</b> standings — they update after every completed game. Positions stay provisional until a group's "complete" badge shows. Switch any group to <b>Manual</b> to override 1st / 2nd / 3rd by hand.</div>
+    <div class="hint">Best-3rd-place groups currently qualifying (need 8): <b>${qual.join(", ")||"—"}</b>${qual.length!==8?` <span style="color:var(--warn)">(${qual.length}/8 — set more groups' 3rd to Yes, or complete the groups)</span>`:""}</div>
+    </div>${cards}`;
 }
 
 // ----- Settings (admin) -----
@@ -498,6 +686,7 @@ function wire(){
   const fs=document.getElementById("fStage"); if(fs)fs.onchange=()=>{matchFilter.stage=fs.value;render();};
   const fq=document.getElementById("fQ"); if(fq)fq.oninput=()=>{matchFilter.q=fq.value;const c=fq.selectionStart;render();const n=document.getElementById("fQ");if(n){n.focus();n.setSelectionRange(c,c);}};
   const sp=document.getElementById("selPlayer"); if(sp)sp.onchange=()=>{curPlayer=+sp.value;render();};
+  const tg=document.getElementById("togFinished"); if(tg)tg.onchange=()=>{showFinishedPred=tg.checked;render();};
 
   // match results (admin)
   document.querySelectorAll("input[data-match]").forEach(el=>el.addEventListener("change",async()=>{
@@ -519,7 +708,7 @@ function wire(){
     render();
   }));
   // champion picks
-  document.querySelectorAll("input[data-champ]").forEach(el=>el.addEventListener("change",async()=>{
+  document.querySelectorAll("[data-champ]").forEach(el=>el.addEventListener("change",async()=>{
     const pid=+el.dataset.champ, val=el.value.trim()||null;
     state.champ[pid]=val;
     const {error}=await sb.from("champion_picks").upsert({player_id:pid,pick:val});
@@ -556,6 +745,25 @@ function wire(){
     const {error}=await sb.from("profiles").update({player_id:pidv}).eq("user_id",uid);
     if(error){toast(error.message,true);} else {toast("Saved"); const p=state.profiles.find(x=>x.user_id===uid); if(p)p.player_id=pidv;}
   }));
+  // penalty-shootout winner (knockout draws)
+  document.querySelectorAll("select[data-pen]").forEach(el=>el.addEventListener("change",async()=>{
+    const id=el.dataset.pen, val=el.value||null; const m=state.matches.find(x=>x.id===id); const prev=m.pen_winner; m.pen_winner=val;
+    const {error}=await sb.from("matches").update({pen_winner:val}).eq("id",id);
+    if(error){m.pen_winner=prev; toast(error.message,true);} else toast("Saved"); render();
+  }));
+  // bracket / group qualifier overrides
+  document.querySelectorAll("select[data-gm]").forEach(el=>el.addEventListener("change",()=>{
+    upsertGM(el.dataset.gm,{[el.dataset.pos]: el.value||null});
+  }));
+}
+async function upsertGM(g,patch){
+  const cur=(state.groupMeta&&state.groupMeta[g])||{grp:g,mode:"auto",third_in:"auto"};
+  const row={...cur,...patch,grp:g};
+  if(row.mode==null)row.mode="auto"; if(row.third_in==null)row.third_in="auto";
+  state.groupMeta=state.groupMeta||{}; state.groupMeta[g]=row;
+  const {error}=await sb.from("group_meta").upsert(row);
+  if(error)toast(error.message,true); else toast("Saved");
+  render();
 }
 </script>
 </body>
