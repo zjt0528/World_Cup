@@ -3,7 +3,7 @@ name: Auto-fill World Cup scores
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes (GitHub schedules are best-effort and can be delayed)
+    - cron: "*/5 * * * *"    # every 5 minutes — GitHub's minimum; still best-effort timing
   workflow_dispatch: {}        # lets you run it manually from the Actions tab
 
 # avoid overlapping runs
