@@ -3,7 +3,7 @@ name: Auto-fill World Cup scores
 
 on:
   schedule:
-    - cron: "*/5 * * * *"    # every 5 minutes — GitHub's minimum; still best-effort timing
+    - cron: "*/15 * * * *"   # every 15 min (~96 calls/day, under API-Football's free 100/day cap)
   workflow_dispatch: {}        # lets you run it manually from the Actions tab
 
 # avoid overlapping runs
@@ -23,6 +23,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          WC_EMAIL: ${{ secrets.WC_EMAIL }}
-          WC_PASSWORD: ${{ secrets.WC_PASSWORD }}
+          APIFOOTBALL_KEY: ${{ secrets.APIFOOTBALL_KEY }}
         run: node autofill-scores.mjs

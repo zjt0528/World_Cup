@@ -1,49 +1,53 @@
 // ============================================================================
-// Auto-fill finished World Cup scores into Supabase.
-// Runs in GitHub Actions (Node 20+). Source: worldcup26.ir (free, no key).
-// Matches API games to your matches by FIFA 3-letter code, then PATCHes scores.
-// Required env (GitHub secrets):
+// Auto-fill finished World Cup scores into Supabase  (API-Football edition).
+// Runs in GitHub Actions (Node 20+). One API call per run returns all fixtures.
+// Required GitHub secrets:
 //   SUPABASE_URL           e.g. https://xxxx.supabase.co
 //   SUPABASE_SERVICE_KEY   service_role key (Project Settings -> API)
-//   WC_EMAIL / WC_PASSWORD  any email+password (the script auto-registers once)
+//   APIFOOTBALL_KEY        free key from https://dashboard.api-football.com
+// Optional (defaults shown): APIFOOTBALL_LEAGUE=1  APIFOOTBALL_SEASON=2026
 // ============================================================================
 const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
-const WC = "https://worldcup26.ir";
-const WC_EMAIL = process.env.WC_EMAIL || "autofill@example.com";
-const WC_PASSWORD = process.env.WC_PASSWORD || "autofill-pass-123";
+const AF_KEY = process.env.APIFOOTBALL_KEY;
+const AF_BASE = "https://v3.football.api-sports.io";
+const LEAGUE = process.env.APIFOOTBALL_LEAGUE || "1";   // 1 = FIFA World Cup
+const SEASON = process.env.APIFOOTBALL_SEASON || "2026";
+const FINISHED = new Set(["FT", "AET", "PEN"]);
 
-// ---- helpers ----
-const code = s => { const m = String(s || "").match(/\(([A-Z]{3})\)/); return m ? m[1] : null; };
-const toISO = d => { // "06/11/2026 13:00" -> "2026-06-11"
-  const m = String(d || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}` : null;
+// normalized team name -> FIFA 3-letter code (matches the codes in your match names)
+const NAME2CODE = {
+  mexico:"MEX", southafrica:"RSA", southkorea:"KOR", korearepublic:"KOR", korea:"KOR",
+  czechia:"CZE", czechrepublic:"CZE", canada:"CAN", switzerland:"SUI", qatar:"QAT",
+  bosniaandherzegovina:"BIH", bosnia:"BIH", bosniaherzegovina:"BIH", brazil:"BRA",
+  morocco:"MAR", haiti:"HTI", scotland:"SCO", usa:"USA", unitedstates:"USA",
+  unitedstatesofamerica:"USA", paraguay:"PAR", australia:"AUS", turkey:"TUR", turkiye:"TUR",
+  germany:"GER", ivorycoast:"CIV", cotedivoire:"CIV", ecuador:"ECU", curacao:"CUW",
+  netherlands:"NED", sweden:"SWE", tunisia:"TUN", japan:"JPN", belgium:"BEL",
+  iran:"IRI", iranislamicrepublic:"IRI", islamicrepublicofiran:"IRI", newzealand:"NZL",
+  egypt:"EGY", spain:"ESP", saudiarabia:"KSA", uruguay:"URU", capeverde:"CPV", caboverde:"CPV",
+  france:"FRA", iraq:"IRQ", norway:"NOR", senegal:"SEN", argentina:"ARG", austria:"AUT",
+  jordan:"JOR", algeria:"DZA", portugal:"POR", uzbekistan:"UZB", colombia:"COL",
+  drcongo:"COD", congodr:"COD", democraticrepublicofthecongo:"COD", congodemocraticrepublic:"COD",
+  england:"ENG", ghana:"GHA", panama:"PAN", croatia:"CRO",
 };
+// lowercase + decompose accents (NFD) + keep only a-z0-9 (this also drops the accent marks)
+const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+const codeOfName = n => NAME2CODE[norm(n)] || null;
+const code = s => { const m = String(s || "").match(/\(([A-Z]{3})\)/); return m ? m[1] : null; };
 const daysApart = (a, b) => { if (!a || !b) return 999; return Math.abs((new Date(a) - new Date(b)) / 86400000); };
 
-async function wcAuthToken() {
-  try {
-    let r = await fetch(`${WC}/auth/authenticate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: WC_EMAIL, password: WC_PASSWORD }) });
-    if (r.ok) return (await r.json()).token || null;
-    r = await fetch(`${WC}/auth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "autofill", email: WC_EMAIL, password: WC_PASSWORD }) });
-    if (r.ok) return (await r.json()).token || null;
-  } catch (e) { /* fall through to no-token */ }
-  return null;
-}
-async function wcGet(path, token) {
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  let r = await fetch(`${WC}${path}`, { headers });
-  if (r.status === 401 && !token) { // demo needed auth after all
-    const t = await wcAuthToken();
-    if (t) r = await fetch(`${WC}${path}`, { headers: { Authorization: `Bearer ${t}` } });
-  }
-  if (!r.ok) throw new Error(`worldcup26 GET ${path} -> ${r.status} ${await r.text().catch(()=> "")}`);
+async function afGet(path) {
+  const r = await fetch(`${AF_BASE}${path}`, { headers: { "x-apisports-key": AF_KEY } });
+  if (!r.ok) throw new Error(`API-Football ${path} -> ${r.status} ${await r.text().catch(()=> "")}`);
   const j = await r.json();
-  return Array.isArray(j) ? j : (j.data || j.results || j.games || j.teams || []);
+  const errs = j.errors;
+  if (errs && (Array.isArray(errs) ? errs.length : Object.keys(errs).length)) throw new Error("API-Football error: " + JSON.stringify(errs));
+  return j.response || [];
 }
 async function sbGet(q) {
   const r = await fetch(`${SB_URL}/rest/v1/${q}`, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-  if (!r.ok) throw new Error(`supabase GET ${q} -> ${r.status} ${await r.text().catch(()=> "")}`);
+  if (!r.ok) throw new Error(`supabase GET -> ${r.status} ${await r.text().catch(()=> "")}`);
   return r.json();
 }
 async function sbPatch(id, body) {
@@ -55,56 +59,49 @@ async function sbPatch(id, body) {
   if (!r.ok) throw new Error(`supabase PATCH ${id} -> ${r.status} ${await r.text().catch(()=> "")}`);
 }
 
-// ---- core matching (exported-style for testing) ----
-export function buildUpdates(apiTeams, apiGames, sbMatches) {
-  const fifaById = {};
-  apiTeams.forEach(t => { if (t && t.id != null && t.fifa_code) fifaById[String(t.id)] = String(t.fifa_code).toUpperCase(); });
-  // index our matches by unordered code pair
+// match API-Football fixtures to our matches by FIFA code pair
+export function buildUpdates(fixtures, sbMatches) {
   const byPair = {};
-  sbMatches.forEach(m => {
-    const h = code(m.home), a = code(m.away);
-    if (!h || !a) return;
-    const key = [h, a].sort().join("-");
-    (byPair[key] = byPair[key] || []).push(m);
-  });
-  const updates = [];
-  for (const g of apiGames) {
-    if (String(g.finished).toUpperCase() !== "TRUE") continue;
-    if (g.home_score == null || g.away_score == null) continue;
-    const hc = fifaById[String(g.home_team_id)], ac = fifaById[String(g.away_team_id)];
-    if (!hc || !ac) continue;
+  sbMatches.forEach(m => { const h = code(m.home), a = code(m.away); if (!h || !a) return; const k = [h, a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); });
+  const updates = [], unmatched = new Set();
+  for (const f of fixtures) {
+    const st = f.fixture && f.fixture.status && f.fixture.status.short;
+    if (!FINISHED.has(st)) continue;
+    const hn = f.teams && f.teams.home && f.teams.home.name;
+    const an = f.teams && f.teams.away && f.teams.away.name;
+    const hc = codeOfName(hn), ac = codeOfName(an);
+    if (!hc) { if (hn) unmatched.add(hn); continue; }
+    if (!ac) { if (an) unmatched.add(an); continue; }
+    const hs = f.goals && f.goals.home, as = f.goals && f.goals.away;
+    if (hs == null || as == null) continue;
     const list = byPair[[hc, ac].sort().join("-")];
     if (!list || !list.length) continue;
-    const date = toISO(g.local_date);
-    // if several of our matches share this pair, pick the nearest date
+    const date = String((f.fixture && f.fixture.date) || "").slice(0, 10);
     const sb = list.length === 1 ? list[0] : list.slice().sort((x, y) => daysApart(x.match_date, date) - daysApart(y.match_date, date))[0];
     const sbH = code(sb.home), sbA = code(sb.away);
     let ah, aa;
-    if (sbH === hc && sbA === ac) { ah = +g.home_score; aa = +g.away_score; }
-    else if (sbH === ac && sbA === hc) { ah = +g.away_score; aa = +g.home_score; }
+    if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
+    else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
     else continue;
-    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa)) continue; // unchanged
+    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa)) continue;
     updates.push({ id: sb.id, actual_home: ah, actual_away: aa, label: `${hc} ${ah}-${aa} ${ac}` });
   }
+  if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
   return updates;
 }
 
 async function main() {
   if (!SB_URL || !SB_KEY) { console.error("Missing SUPABASE_URL / SUPABASE_SERVICE_KEY"); process.exit(1); }
-  const token = await wcAuthToken();
-  const [apiTeams, apiGames] = await Promise.all([wcGet("/get/teams", token), wcGet("/get/games", token)]);
+  if (!AF_KEY) { console.error("Missing APIFOOTBALL_KEY"); process.exit(1); }
+  const fixtures = await afGet(`/fixtures?league=${LEAGUE}&season=${SEASON}`);
   const sbMatches = await sbGet("matches?select=id,match_date,home,away,actual_home,actual_away");
-  console.log(`API: ${apiTeams.length} teams, ${apiGames.length} games | DB: ${sbMatches.length} matches`);
-  const updates = buildUpdates(apiTeams, apiGames, sbMatches);
+  console.log(`API-Football: ${fixtures.length} fixtures | DB: ${sbMatches.length} matches`);
+  const updates = buildUpdates(fixtures, sbMatches);
   if (!updates.length) { console.log("No new finished scores to apply."); return; }
-  for (const u of updates) {
-    await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away });
-    console.log("Updated", u.id, "->", u.label);
-  }
+  for (const u of updates) { await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away }); console.log("Updated", u.id, "->", u.label); }
   console.log(`Done. ${updates.length} match(es) updated.`);
 }
 
-// only run when executed directly (so tests can import buildUpdates)
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(e => { console.error(e.message || e); process.exit(1); });
 }
