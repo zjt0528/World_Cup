@@ -25,7 +25,7 @@ const NAME2CODE = {
   germany:"GER", ivorycoast:"CIV", cotedivoire:"CIV", ecuador:"ECU", curacao:"CUW",
   netherlands:"NED", sweden:"SWE", tunisia:"TUN", japan:"JPN", belgium:"BEL",
   iran:"IRI", iranislamicrepublic:"IRI", islamicrepublicofiran:"IRI", newzealand:"NZL",
-  egypt:"EGY", spain:"ESP", saudiarabia:"KSA", uruguay:"URU", capeverde:"CPV", caboverde:"CPV",
+  egypt:"EGY", spain:"ESP", saudiarabia:"KSA", uruguay:"URU", capeverde:"CPV", caboverde:"CPV", capeverdeislands:"CPV",
   france:"FRA", iraq:"IRQ", norway:"NOR", senegal:"SEN", argentina:"ARG", austria:"AUT",
   jordan:"JOR", algeria:"DZA", portugal:"POR", uzbekistan:"UZB", colombia:"COL",
   drcongo:"COD", congodr:"COD", democraticrepublicofthecongo:"COD", congodemocraticrepublic:"COD",
