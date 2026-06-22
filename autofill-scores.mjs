@@ -14,6 +14,7 @@ const AF_BASE = "https://v3.football.api-sports.io";
 const LEAGUE = process.env.APIFOOTBALL_LEAGUE || "1";   // 1 = FIFA World Cup
 const SEASON = process.env.APIFOOTBALL_SEASON || "2026";
 const FINISHED = new Set(["FT", "AET", "PEN"]);
+const LIVE = new Set(["1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE"]);
 
 // normalized team name -> FIFA 3-letter code (matches the codes in your match names)
 const NAME2CODE = {
@@ -66,7 +67,8 @@ export function buildUpdates(fixtures, sbMatches) {
   const updates = [], unmatched = new Set();
   for (const f of fixtures) {
     const st = f.fixture && f.fixture.status && f.fixture.status.short;
-    if (!FINISHED.has(st)) continue;
+    const isFinal = FINISHED.has(st), isLive = LIVE.has(st);
+    if (!isFinal && !isLive) continue;
     const hn = f.teams && f.teams.home && f.teams.home.name;
     const an = f.teams && f.teams.away && f.teams.away.name;
     const hc = codeOfName(hn), ac = codeOfName(an);
@@ -83,8 +85,9 @@ export function buildUpdates(fixtures, sbMatches) {
     if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
     else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
     else continue;
-    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa)) continue;
-    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, label: `${hc} ${ah}-${aa} ${ac}` });
+    const minute = isLive ? (f.fixture.status.elapsed ?? null) : null;
+    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
+    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
   }
   if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
   return updates;
@@ -94,11 +97,11 @@ async function main() {
   if (!SB_URL || !SB_KEY) { console.error("Missing SUPABASE_URL / SUPABASE_SERVICE_KEY"); process.exit(1); }
   if (!AF_KEY) { console.error("Missing APIFOOTBALL_KEY"); process.exit(1); }
   const fixtures = await afGet(`/fixtures?league=${LEAGUE}&season=${SEASON}`);
-  const sbMatches = await sbGet("matches?select=id,match_date,home,away,actual_home,actual_away");
+  const sbMatches = await sbGet("matches?select=id,match_date,home,away,actual_home,actual_away,status,minute");
   console.log(`API-Football: ${fixtures.length} fixtures | DB: ${sbMatches.length} matches`);
   const updates = buildUpdates(fixtures, sbMatches);
-  if (!updates.length) { console.log("No new finished scores to apply."); return; }
-  for (const u of updates) { await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away }); console.log("Updated", u.id, "->", u.label); }
+  if (!updates.length) { console.log("Nothing to update."); return; }
+  for (const u of updates) { await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute }); console.log("Updated", u.id, "->", u.label); }
   console.log(`Done. ${updates.length} match(es) updated.`);
 }
 

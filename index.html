@@ -51,6 +51,12 @@
   .pill.wrong{background:rgba(255,107,107,.14);color:var(--warn)}
   .pill.pending{background:rgba(147,163,184,.14);color:var(--muted)}
   .pill.done{background:rgba(61,220,151,.16);color:var(--exact)}
+  .pill.livep{background:rgba(255,80,80,.18);color:#ff7070;font-weight:700}
+  .pill.livepts{background:rgba(255,210,74,.16);color:var(--gold)}
+  .livep{color:#ff7070;font-weight:700;font-size:11px}
+  .livedot,.livep .l{animation:livepulse 1.2s ease-in-out infinite}
+  @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .livedot{color:#ff5050}
   .rank{font-weight:700;width:34px;text-align:center}
   .rank.r1{color:var(--gold)} .rank.r2{color:var(--silver)} .rank.r3{color:var(--bronze)}
   .totbig{font-weight:700;font-size:15px}
@@ -253,7 +259,7 @@ async function init(){
   const {data:{session}}=await sb.auth.getSession();
   if(session){ user=session.user; await afterLogin(); }
   else renderAuth();
-  sb.auth.onAuthStateChange((_e,s)=>{ if(!s){ user=null; me=null; state=null; renderAuth(); } });
+  sb.auth.onAuthStateChange((_e,s)=>{ if(!s){ user=null; me=null; state=null; if(refreshTimer)clearInterval(refreshTimer); renderAuth(); } });
 }
 
 // ===========================================================================
@@ -329,6 +335,31 @@ async function afterLogin(){
   else curPlayer=(state.players[0]||{}).id||null;
   TAB="leaderboard";
   render();
+  startAutoRefresh();
+}
+// Periodically re-fetch live data so in-progress scores appear without a manual reload.
+// Only re-renders when match data actually changed, and never while an input is focused.
+let refreshTimer=null;
+function startAutoRefresh(){ if(refreshTimer)clearInterval(refreshTimer); refreshTimer=setInterval(refreshData,30000); }
+async function refreshData(){
+  if(!state||!user) return;
+  const ae=document.activeElement;
+  if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;   // don't clobber edits in progress
+  try{
+    const {data:ma}=await sb.from("matches").select("*").order("sort_order");
+    if(!ma) return;
+    const sig=JSON.stringify(ma.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away]));
+    if(sig===state._matchSig) return;     // nothing changed -> skip re-render
+    state._matchSig=sig;
+    state.matches=sortMatches(ma);
+    const [pr,ch,se]=await Promise.all([
+      sb.from("predictions").select("*"), sb.from("champion_picks").select("*"),
+      sb.from("settings").select("*").eq("id",1).maybeSingle() ]);
+    if(pr.data){ const pm={}; pr.data.forEach(p=>pm[p.player_id+"|"+p.match_id]={h:p.home_pred,a:p.away_pred}); state.predMap=pm; }
+    if(ch.data){ const c={}; ch.data.forEach(x=>c[x.player_id]=x.pick); state.champ=c; }
+    if(se.data) state.settings=se.data;
+    render();
+  }catch(e){ /* transient network error - ignore */ }
 }
 async function loadAll(){
   const q=[
@@ -346,6 +377,7 @@ async function loadAll(){
   const champ={}; (ch.data||[]).forEach(c=>champ[c.player_id]=c.pick);
   state={ settings:se.data||{exact_pts:2,result_pts:1,wrong_pts:0,champ_bonus:0,actual_champion:null},
           players:pl.data||[], matches:sortMatches(ma.data||[]), predMap, champ, profiles:[] };
+  state._matchSig=JSON.stringify(state.matches.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away]));
   if(me.role==="admin"){
     const {data:profs,error}=await sb.from("profiles").select("*").order("created_at");
     if(!error) state.profiles=profs||[];
@@ -374,6 +406,7 @@ function playerStats(pid){
   let match=0,exact=0,result=0;
   state.matches.forEach(m=>{
     if(m.results_only) return;            // reference matches are not predicted/scored
+    if(!matchInfo(m).completed) return;   // live/in-progress scores don't count until full-time
     const p=pred(pid,m.id);
     const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
     if(r){match+=r.pts; if(r.type==="exact")exact++; else if(r.type==="result")result++;}
@@ -386,11 +419,18 @@ function leaderboard(){
   rows.sort((a,b)=>b.total-a.total||b.exact-a.exact||b.result-a.result||a.name.localeCompare(b.name));
   return rows;
 }
+const FINAL_ST=new Set(["FT","AET","PEN"]);
+const LIVE_ST=new Set(["1H","2H","HT","ET","BT","P","SUSP","INT","LIVE"]);
 function matchInfo(m){
-  if(!isNum(m.actual_home)||!isNum(m.actual_away)) return {result:"",winner:"",completed:false};
+  const have=isNum(m.actual_home)&&isNum(m.actual_away);
+  const s=String(m.status||"").toUpperCase();
+  const live=LIVE_ST.has(s)&&have;
+  const final=FINAL_ST.has(s)||(!s&&have);   // manual entries (no status) treated as final
+  if(!have) return {result:"",winner:"",completed:false,live:false,state:"upcoming"};
   const ah=+m.actual_home,aa=+m.actual_away;
   const result=ah>aa?"Home":(ah<aa?"Away":"Draw");
-  return {result,winner:result==="Home"?tname(m,"home"):(result==="Away"?tname(m,"away"):"Draw"),completed:true};
+  return {result,winner:result==="Home"?tname(m,"home"):(result==="Away"?tname(m,"away"):"Draw"),
+          completed:final,live:live,state:final?"final":(live?"live":"upcoming"),minute:m.minute};
 }
 function stages(){const s=[];state.matches.forEach(m=>{if(!s.includes(m.stage))s.push(m.stage);});return s;}
 const isAdmin=()=>me&&me.role==="admin";
@@ -637,7 +677,7 @@ function viewMatches(){
       <td data-label="Score" class="num scell"><span class="scoregrp"><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_home" value="${esc(m.actual_home)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in actual" data-match="${esc(m.id)}" data-side="actual_away" value="${esc(m.actual_away)}" inputmode="numeric" ${dis}></span></td>
       <td data-label="Away" class="team">${teamCell(m,"away")}</td>
       <td data-label="Winner" class="num">${winCell}</td>
-      <td data-label="Status" class="num">${info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>'}${m.results_only?' <span class="pill" style="background:rgba(74,163,255,.16);color:var(--accent2)">ref</span>':''}</td></tr>`;
+      <td data-label="Status" class="num">${info.live?`<span class="pill livep">● LIVE${info.minute?` ${esc(info.minute)}'`:""}</span>`:(info.completed?'<span class="pill done">Final</span>':'<span class="pill pending">Pending</span>')}${m.results_only?' <span class="pill" style="background:rgba(74,163,255,.16);color:var(--accent2)">ref</span>':''}</td></tr>`;
   });
   const nMiss=adminCan?dueMissing().length:0;
   const checker=adminCan?`<div class="checkbar">
@@ -669,23 +709,25 @@ function viewPlayers(){
     ||String(a.kickoff||"").localeCompare(String(b.kickoff||""))
     ||stageRank(a.stage)-stageRank(b.stage));
   const openList=list.filter(m=>!locked(m));
-  const shown=showFinishedPred?list:openList;
+  const shown=showFinishedPred?list:list.filter(m=>!locked(m)||matchInfo(m).live);   // show upcoming + live by default
   let body=shown.map(m=>{
     const p=pred(curPlayer,m.id);
-    const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
     const info=matchInfo(m);
+    const r=pointsFor(p.h,p.a,m.actual_home,m.actual_away);
     const lk=locked(m);
     let pt;
-    if(r) pt=r.type==="exact"?`<span class="pill exact">+${r.pts} exact</span>`:r.type==="result"?`<span class="pill result">+${r.pts} result</span>`:`<span class="pill wrong">+${r.pts}</span>`;
+    if(info.completed && r) pt=r.type==="exact"?`<span class="pill exact">+${r.pts} exact</span>`:r.type==="result"?`<span class="pill result">+${r.pts} result</span>`:`<span class="pill wrong">+${r.pts}</span>`;
+    else if(info.live && r) pt=`<span class="pill livepts">+${r.pts} live</span>`;
     else pt=lk?'<span class="pill pending">locked</span>':'<span class="muted">—</span>';
     const canEdit=editable&&(isAdmin()||!lk);
     const dis=canEdit?"":"disabled";
+    const actual=(info.completed||info.live)?`${esc(m.actual_home)} : ${esc(m.actual_away)}${info.live?` <span class="livedot">●</span>`:""}`:'<span class="muted">—</span>';
     return `<tr>
-      <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${esc(m.match_date||"")}<br>${esc(m.kickoff||"")} · ${esc(m.stage)}</td>
+      <td data-label="When" class="muted" style="font-size:12px;white-space:nowrap">${info.live?`<span class="livep">● LIVE${info.minute?` ${esc(info.minute)}'`:""}</span><br>`:""}${esc(m.match_date||"")}<br>${esc(m.kickoff||"")} · ${esc(m.stage)}</td>
       <td data-label="Home" class="team" style="text-align:right">${teamCell(m,"home")}</td>
       <td data-label="Your pick" class="num scell"><span class="scoregrp"><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="h" value="${esc(p.h)}" inputmode="numeric" ${dis}><span class="vs">:</span><input class="cell-in" data-pred-match="${esc(m.id)}" data-side="a" value="${esc(p.a)}" inputmode="numeric" ${dis}></span></td>
       <td data-label="Away" class="team">${teamCell(m,"away")}</td>
-      <td data-label="Actual" class="num scoreline">${info.completed?esc(m.actual_home)+" : "+esc(m.actual_away):'<span class="muted">—</span>'}</td>
+      <td data-label="Actual" class="num scoreline">${actual}</td>
       <td data-label="Points" class="num">${pt}</td></tr>`;
   }).join("");
   if(!body) body=`<tr><td colspan="6" class="center-msg" style="padding:30px">${showFinishedPred?"No matches yet.":"🎉 All caught up — no upcoming games to predict right now. Tick “Show finished games” to review your picks."}</td></tr>`;
