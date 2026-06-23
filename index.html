@@ -184,7 +184,8 @@
     table.mtable td{flex:1 1 100%;border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-height:30px}
     table.mtable td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;text-align:left;flex:none}
     /* Home | score | Away on one centered row */
-    table.mtable td.team{flex:1 1 37%;justify-content:center;text-align:center;font-weight:600;min-height:24px;padding:5px 2px;line-height:1.2}
+    table.mtable td.team{flex:1 1 37%;justify-content:center;text-align:center!important;gap:0;font-weight:600;min-height:24px;padding:5px 2px;line-height:1.2}
+    table.mtable td.team .flag{margin-right:4px}
     table.mtable td.scell{flex:0 0 auto;justify-content:center;min-height:24px;padding:5px 0}
     table.mtable td.team::before,table.mtable td.scell::before{display:none}
     table.mtable .cell-in{width:44px}
