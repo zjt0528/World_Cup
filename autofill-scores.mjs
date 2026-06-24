@@ -60,6 +60,34 @@ async function sbPatch(id, body) {
   if (!r.ok) throw new Error(`supabase PATCH ${id} -> ${r.status} ${await r.text().catch(()=> "")}`);
 }
 
+// For a live fixture: pull goals + cards (events) and stats, mapped to home/away.
+async function fetchDetails(fixtureId, homeCode, awayCode) {
+  if (!fixtureId) return null;
+  const sideOf = name => { const c = codeOfName(name); return c === homeCode ? "home" : (c === awayCode ? "away" : null); };
+  let ev = [], st = [];
+  try { ev = await afGet(`/fixtures/events?fixture=${fixtureId}`); } catch (e) {}
+  try { st = await afGet(`/fixtures/statistics?fixture=${fixtureId}`); } catch (e) {}
+  const events = [];
+  for (const e of (ev || [])) {
+    const side = sideOf(e.team && e.team.name); if (!side) continue;
+    const min = e.time && e.time.elapsed; const player = (e.player && e.player.name) || "";
+    if (e.type === "Goal" && e.detail !== "Missed Penalty") {
+      const scoring = e.detail === "Own Goal" ? (side === "home" ? "away" : "home") : side;
+      events.push({ team: scoring, player, minute: min, type: "goal", detail: e.detail });
+    } else if (e.type === "Card") {
+      events.push({ team: side, player, minute: min, type: "card", detail: e.detail });
+    }
+  }
+  events.sort((a, b) => (a.minute || 0) - (b.minute || 0));
+  const stats = {};
+  for (const s of (st || [])) {
+    const side = sideOf(s.team && s.team.name); if (!side) continue;
+    const get = t => { const f = (s.statistics || []).find(x => x.type === t); return f ? f.value : null; };
+    stats[side] = { poss: get("Ball Possession"), shots: get("Total Shots"), sot: get("Shots on Goal"), corners: get("Corner Kicks") };
+  }
+  return { events, stats };
+}
+
 // match API-Football fixtures to our matches by FIFA code pair
 export function buildUpdates(fixtures, sbMatches) {
   const byPair = {};
@@ -87,7 +115,7 @@ export function buildUpdates(fixtures, sbMatches) {
     else continue;
     const minute = isLive ? (f.fixture.status.elapsed ?? null) : null;
     if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
-    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
+    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
   }
   if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
   return updates;
@@ -101,7 +129,12 @@ async function main() {
   console.log(`API-Football: ${fixtures.length} fixtures | DB: ${sbMatches.length} matches`);
   const updates = buildUpdates(fixtures, sbMatches);
   if (!updates.length) { console.log("Nothing to update."); return; }
-  for (const u of updates) { await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute }); console.log("Updated", u.id, "->", u.label); }
+  for (const u of updates) {
+    const body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
+    if (u.live) body.details = await fetchDetails(u.fixtureId, u.homeCode, u.awayCode);
+    await sbPatch(u.id, body);
+    console.log("Updated", u.id, "->", u.label);
+  }
   console.log(`Done. ${updates.length} match(es) updated.`);
 }
 

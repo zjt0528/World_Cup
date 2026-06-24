@@ -57,6 +57,38 @@
   .livedot,.livep .l{animation:livepulse 1.2s ease-in-out infinite}
   @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
   .livedot{color:#ff5050}
+  /* Google-style "Live now" scoreboard */
+  .livewrap{border-color:rgba(255,90,90,.4)}
+  .livewrap>h2{color:#ff7070}
+  .livewrap>h2::first-letter{animation:livepulse 1.2s ease-in-out infinite}
+  .livegrid{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+  .livecard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+  .livehdr{font-size:11px;font-weight:700;color:#ff7070;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px;text-align:center}
+  .livehdr .livedot{animation:livepulse 1.2s ease-in-out infinite}
+  .livehdr .livestage{color:var(--muted);font-weight:500}
+  .livebody{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+  .liveteam{display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted)}
+  .liveteam.ar{justify-content:flex-end}
+  .liveteam.lwin{color:var(--txt)}
+  .liveteam .flag{width:1.7em;height:1.15em}
+  .livename{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .livescore{font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;padding:0 4px;color:var(--txt)}
+  .livesep{color:var(--muted);margin:0 5px;font-weight:400}
+  .liveev{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:12px}
+  .evcol{display:flex;flex-direction:column;gap:3px;color:var(--muted);min-width:0}
+  .evcol.ar{text-align:right}
+  .evrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cd{display:inline-block;width:8px;height:11px;border-radius:1px;vertical-align:-1px}
+  .cd.yel{background:#ffcf3a}
+  .cd.red{background:#ff5050}
+  .livestats{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:12px}
+  .possrow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:600}
+  .possbar{flex:1;height:6px;border-radius:4px;background:rgba(74,163,255,.22);overflow:hidden}
+  .possfill{height:100%;background:var(--accent2);border-radius:4px}
+  .strow{display:flex;align-items:center;justify-content:space-between;padding:3px 0}
+  .strow .stlbl{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  .strow>span:first-child,.strow>span:last-child{font-weight:600;min-width:28px}
+  .strow>span:last-child{text-align:right}
   .rank{font-weight:700;width:34px;text-align:center}
   .rank.r1{color:var(--gold)} .rank.r2{color:var(--silver)} .rank.r3{color:var(--bronze)}
   .totbig{font-weight:700;font-size:15px}
@@ -349,7 +381,7 @@ async function refreshData(){
   try{
     const {data:ma}=await sb.from("matches").select("*").order("sort_order");
     if(!ma) return;
-    const sig=JSON.stringify(ma.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away]));
+    const sig=JSON.stringify(ma.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away,m.details]));
     if(sig===state._matchSig) return;     // nothing changed -> skip re-render
     state._matchSig=sig;
     state.matches=sortMatches(ma);
@@ -378,7 +410,7 @@ async function loadAll(){
   const champ={}; (ch.data||[]).forEach(c=>champ[c.player_id]=c.pick);
   state={ settings:se.data||{exact_pts:2,result_pts:1,wrong_pts:0,champ_bonus:0,actual_champion:null},
           players:pl.data||[], matches:sortMatches(ma.data||[]), predMap, champ, profiles:[] };
-  state._matchSig=JSON.stringify(state.matches.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away]));
+  state._matchSig=JSON.stringify(state.matches.map(m=>[m.id,m.actual_home,m.actual_away,m.status,m.minute,m.home,m.away,m.details]));
   if(me.role==="admin"){
     const {data:profs,error}=await sb.from("profiles").select("*").order("created_at");
     if(!error) state.profiles=profs||[];
@@ -622,6 +654,40 @@ function render(){
 }
 
 // ----- Leaderboard -----
+// Google-style "Live now" scoreboard, shown above the standings when any match is in play.
+function liveBanner(){
+  const lives=state.matches.filter(m=>matchInfo(m).live);
+  if(!lives.length) return "";
+  const evLine=(arr)=>arr.map(e=>e.type==="goal"
+      ?`<div class="evrow">⚽ ${esc(e.player)} ${e.minute?esc(e.minute)+"'":""}${e.detail==="Penalty"?" (P)":e.detail==="Own Goal"?" (OG)":""}</div>`
+      :`<div class="evrow">${/Red/.test(e.detail)?'<i class="cd red"></i>':'<i class="cd yel"></i>'} ${esc(e.player)} ${e.minute?esc(e.minute)+"'":""}</div>`).join("");
+  const num=v=>v==null?"–":esc(v);
+  const pctNum=v=>{const m=String(v||"").match(/(\d+)/);return m?+m[1]:null;};
+  const cards=lives.map(m=>{
+    const info=matchInfo(m); const hn=tname(m,"home"), an=tname(m,"away");
+    const ah=+m.actual_home||0, aa=+m.actual_away||0;
+    const d=m.details||{}; const evs=d.events||[]; const sh=(d.stats||{}).home||{}, sa=(d.stats||{}).away||{};
+    const evH=evs.filter(e=>e.team==="home"), evA=evs.filter(e=>e.team==="away");
+    const evBlock=(evH.length||evA.length)?`<div class="liveev"><div class="evcol">${evLine(evH)}</div><div class="evcol ar">${evLine(evA)}</div></div>`:"";
+    const ph=pctNum(sh.poss);
+    const hasStats=sh.poss||sa.poss||sh.shots!=null||sa.shots!=null;
+    const statBlock=hasStats?`<div class="livestats">
+      ${(sh.poss||sa.poss)?`<div class="possrow"><span>${esc(sh.poss||"")}</span><div class="possbar"><div class="possfill" style="width:${ph!=null?ph:50}%"></div></div><span>${esc(sa.poss||"")}</span></div>`:""}
+      <div class="strow"><span>${num(sh.shots)}</span><span class="stlbl">Shots</span><span>${num(sa.shots)}</span></div>
+      <div class="strow"><span>${num(sh.sot)}</span><span class="stlbl">On target</span><span>${num(sa.sot)}</span></div>
+      <div class="strow"><span>${num(sh.corners)}</span><span class="stlbl">Corners</span><span>${num(sa.corners)}</span></div>
+    </div>`:"";
+    return `<div class="livecard">
+      <div class="livehdr"><span class="livedot">●</span> LIVE${info.minute?` · ${esc(info.minute)}'`:""}<span class="livestage"> · ${esc(m.stage)}</span></div>
+      <div class="livebody">
+        <div class="liveteam ${ah>aa?'lwin':''}">${flagHtml(hn)}<span class="livename">${esc(hn)}</span></div>
+        <div class="livescore">${esc(m.actual_home)}<span class="livesep">–</span>${esc(m.actual_away)}</div>
+        <div class="liveteam ar ${aa>ah?'lwin':''}"><span class="livename">${esc(an)}</span>${flagHtml(an)}</div>
+      </div>
+      ${evBlock}${statBlock}</div>`;
+  }).join("");
+  return `<div class="card livewrap"><h2>● Live now</h2><div class="livegrid">${cards}</div></div>`;
+}
 function viewLeaderboard(){
   const lb=leaderboard();
   const max=Math.max(1,...lb.map(r=>r.total));
@@ -637,7 +703,7 @@ function viewLeaderboard(){
     <div class="bar-val">${r.total}</div></div>`).join("");
   const predMatches=state.matches.filter(m=>!m.results_only);
   const done=predMatches.filter(m=>matchInfo(m).completed).length;
-  return `<div class="card"><h2>Standings</h2>
+  return liveBanner()+`<div class="card"><h2>Standings</h2>
     <div class="sub">Total = match points + champion bonus. ${done}/${predMatches.length} matches completed. Live for everyone.</div>
     <table><thead><tr><th class="num">#</th><th>Participant</th><th class="num">Match Pts</th><th class="num">Champ Bonus</th><th class="num">Total</th><th class="num">Exact</th><th class="num">Result Only</th></tr></thead>
     <tbody>${rows}</tbody></table>
