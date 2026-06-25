@@ -519,27 +519,38 @@ function groupReady(M,g){const ms=gmatches(M,g);return ms.length>0&&ms.every(m=>
 // "through" = clinched top-2; "out" = can't reach group top-3 even by winning remaining games big
 // (4th can't advance even as a best-3rd). Brute-forces remaining results with full FIFA 2026 tiebreakers.
 function groupStatus(M,g){
-  const tbl=computeGroupTable(M,g);
-  const info=tbl.map(t=>{const rem=Math.max(0,3-t.P);return {team:t.team,floor:t.Pts,ceil:t.Pts+3*rem};});
-  const ready=groupReady(M,g);
-  const top2=new Set(tbl.slice(0,2).map(t=>t.team));   // when the group is finished, the top 2 are through (tiebreakers resolved)
-  const through={}; info.forEach(t=>{through[t.team]=(info.filter(o=>o.team!==t.team&&o.ceil>=t.floor).length<=1) || (ready && top2.has(t.team));});
   const teams=groupTeams(M,g), gm=gmatches(M,g);
   const playedBase=gm.filter(m=>isNum(m.actual_home)&&isNum(m.actual_away));
   const remaining=gm.filter(m=>!(isNum(m.actual_home)&&isNum(m.actual_away)));
   const n=Math.min(remaining.length,9), total=Math.pow(3,n);
-  const canTop3={};
-  teams.forEach(t=>{ let ok=false;
-    for(let mask=0;mask<total && !ok;mask++){
-      const scen=playedBase.slice(); let x=mask;
-      for(let i=0;i<n;i++){const r=x%3;x=(x-r)/3;const m=remaining[i];const inv=(m.home===t||m.away===t);
-        let hs,as; if(r===0){hs=inv&&m.home===t?5:1;as=0;} else if(r===1){hs=0;as=inv&&m.away===t?5:1;} else {hs=0;as=0;}
-        scen.push({home:m.home,away:m.away,actual_home:hs,actual_away:as});}
-      const st={}; teams.forEach(z=>st[z]={team:z,Pts:0,GF:0,GA:0,GD:0});
-      scen.forEach(m=>{const h=st[m.home],a=st[m.away],hh=+m.actual_home,aa=+m.actual_away;h.GF+=hh;h.GA+=aa;a.GF+=aa;a.GA+=hh;h.GD+=hh-aa;a.GD+=aa-hh;if(hh>aa)h.Pts+=3;else if(hh<aa)a.Pts+=3;else{h.Pts++;a.Pts++;}});
-      if(rankTeams(Object.values(st),scen).findIndex(z=>z.team===t)<3) ok=true;
+  const BIG=99;   // margin big enough to win any goal-difference / goals-for tiebreaker
+  // Final position (0-based) of `focus` for one combination of remaining results.
+  // mask = base-3 per remaining game: 0 home win, 1 away win, 2 draw.
+  // fav=true  -> margins that HELP focus (focus wins big, rivals win small) = focus's BEST finish.
+  // fav=false -> ADVERSARIAL margins (focus wins/loses small/big, rivals win big) = focus's WORST finish.
+  function pos(mask,focus,fav){
+    const scen=playedBase.slice(); let x=mask;
+    for(let i=0;i<n;i++){
+      const r=x%3; x=(x-r)/3; const m=remaining[i]; let hs=0,as=0;
+      if(r===0){ hs=(m.home===focus)?(fav?BIG:1):(fav?1:BIG); as=0; }       // home win
+      else if(r===1){ as=(m.away===focus)?(fav?BIG:1):(fav?1:BIG); hs=0; }  // away win
+      // r===2 -> 0-0 draw
+      scen.push({home:m.home,away:m.away,actual_home:hs,actual_away:as});
     }
-    canTop3[t]=ok; });
+    const st={}; teams.forEach(z=>st[z]={team:z,Pts:0,GF:0,GA:0,GD:0});
+    scen.forEach(m=>{const h=st[m.home],a=st[m.away],hh=+m.actual_home,aa=+m.actual_away;h.GF+=hh;h.GA+=aa;a.GF+=aa;a.GA+=hh;h.GD+=hh-aa;a.GD+=aa-hh;if(hh>aa)h.Pts+=3;else if(hh<aa)a.Pts+=3;else{h.Pts++;a.Pts++;}});
+    return rankTeams(Object.values(st),scen).findIndex(z=>z.team===focus);
+  }
+  const through={}, canTop3={};
+  teams.forEach(t=>{
+    let best=99, worst=-1;
+    for(let mask=0;mask<total;mask++){
+      const b=pos(mask,t,true);  if(b<best) best=b;     // best case over favorable margins
+      const w=pos(mask,t,false); if(w>worst) worst=w;   // worst case over adversarial margins
+    }
+    through[t]=worst<2;    // STRICT: top-2 in EVERY possible remaining scenario -> clinched
+    canTop3[t]=best<3;     // top-3 still reachable in SOME scenario -> not eliminated
+  });
   const st={}; teams.forEach(t=>{ st[t]= through[t] ? "through" : (!canTop3[t] ? "out" : ""); });
   return st;
 }
