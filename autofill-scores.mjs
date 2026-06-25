@@ -129,13 +129,21 @@ async function main() {
   console.log(`API-Football: ${fixtures.length} fixtures | DB: ${sbMatches.length} matches`);
   const updates = buildUpdates(fixtures, sbMatches);
   if (!updates.length) { console.log("Nothing to update."); return; }
+  // 1) Write every score/status/minute FIRST (fast, no per-match API calls), so two
+  //    simultaneous live matches never block each other on a slow/limited detail fetch.
   for (const u of updates) {
-    const body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
-    if (u.live) body.details = await fetchDetails(u.fixtureId, u.homeCode, u.awayCode);
-    await sbPatch(u.id, body);
-    console.log("Updated", u.id, "->", u.label);
+    await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute });
+    console.log("Score", u.id, "->", u.label);
   }
-  console.log(`Done. ${updates.length} match(es) updated.`);
+  // 2) Then fetch + write live details in parallel (best-effort; failures don't stall scores).
+  const live = updates.filter(u => u.live);
+  await Promise.all(live.map(async u => {
+    try {
+      const details = await fetchDetails(u.fixtureId, u.homeCode, u.awayCode);
+      if (details) await sbPatch(u.id, { details });
+    } catch (e) { console.log("details failed for", u.id, "-", e.message || e); }
+  }));
+  console.log(`Done. ${updates.length} match(es) updated (${live.length} live).`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

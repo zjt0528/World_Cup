@@ -521,7 +521,9 @@ function groupReady(M,g){const ms=gmatches(M,g);return ms.length>0&&ms.every(m=>
 function groupStatus(M,g){
   const tbl=computeGroupTable(M,g);
   const info=tbl.map(t=>{const rem=Math.max(0,3-t.P);return {team:t.team,floor:t.Pts,ceil:t.Pts+3*rem};});
-  const through={}; info.forEach(t=>{through[t.team]=info.filter(o=>o.team!==t.team&&o.ceil>=t.floor).length<=1;});
+  const ready=groupReady(M,g);
+  const top2=new Set(tbl.slice(0,2).map(t=>t.team));   // when the group is finished, the top 2 are through (tiebreakers resolved)
+  const through={}; info.forEach(t=>{through[t.team]=(info.filter(o=>o.team!==t.team&&o.ceil>=t.floor).length<=1) || (ready && top2.has(t.team));});
   const teams=groupTeams(M,g), gm=gmatches(M,g);
   const playedBase=gm.filter(m=>isNum(m.actual_home)&&isNum(m.actual_away));
   const remaining=gm.filter(m=>!(isNum(m.actual_home)&&isNum(m.actual_away)));
