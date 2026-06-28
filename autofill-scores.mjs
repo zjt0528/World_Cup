@@ -6,6 +6,10 @@
 //   SUPABASE_SERVICE_KEY   service_role key (Project Settings -> API)
 //   APIFOOTBALL_KEY        free key from https://dashboard.api-football.com
 // Optional (defaults shown): APIFOOTBALL_LEAGUE=1  APIFOOTBALL_SEASON=2026
+//
+// Knockout matches are stored with placeholder slots like "TBD (1st Group A)"
+// or "TBD (Winner of 53452545)". We resolve those to the real teams (same logic
+// as the website) BEFORE matching, so knockout games auto-fill too.
 // ============================================================================
 const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -37,6 +41,72 @@ const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[^a-z0
 const codeOfName = n => NAME2CODE[norm(n)] || null;
 const code = s => { const m = String(s || "").match(/\(([A-Z]{3})\)/); return m ? m[1] : null; };
 const daysApart = (a, b) => { if (!a || !b) return 999; return Math.abs((new Date(a) - new Date(b)) / 86400000); };
+
+// ----------------------------------------------------------------------------
+// Bracket resolver: turns each match's home/away into the real team name.
+// Group matches resolve to themselves; knockout slots resolve via the live
+// group standings (FIFA 2026 tiebreakers), best-8 third places, and the
+// winner/loser of feeder matches. Returns resolve(id, side) -> "Team (XXX)" | null.
+// ----------------------------------------------------------------------------
+function makeResolver(matches, gmeta) {
+  gmeta = gmeta || {};
+  const isNumv = x => x !== "" && x != null && !isNaN(Number(x));
+  const byId = {}; matches.forEach(m => byId[m.id] = m);
+  const gmatches = g => matches.filter(m => m.stage === "Group " + g);
+  const GROUPS = [...new Set(matches.filter(m => /^Group /.test(m.stage || "")).map(m => m.stage.slice(6)))].sort();
+  function rankTeams(arr, played) {
+    const byPts = {}; arr.forEach(t => { (byPts[t.Pts] = byPts[t.Pts] || []).push(t); });
+    const levels = Object.keys(byPts).map(Number).sort((a, b) => b - a); let out = [];
+    levels.forEach(p => {
+      const grp = byPts[p]; if (grp.length === 1) { out.push(grp[0]); return; }
+      const set = new Set(grp.map(t => t.team)); const h = {}; grp.forEach(t => h[t.team] = { pts: 0, gd: 0, gf: 0 });
+      played.forEach(m => { if (set.has(m.home) && set.has(m.away)) { const hs = +m.actual_home, as = +m.actual_away;
+        h[m.home].gf += hs; h[m.away].gf += as; h[m.home].gd += hs - as; h[m.away].gd += as - hs;
+        if (hs > as) h[m.home].pts += 3; else if (hs < as) h[m.away].pts += 3; else { h[m.home].pts++; h[m.away].pts++; } } });
+      out = out.concat(grp.slice().sort((a, b) => h[b.team].pts - h[a.team].pts || h[b.team].gd - h[a.team].gd || h[b.team].gf - h[a.team].gf || b.GD - a.GD || b.GF - a.GF || a.team.localeCompare(b.team)));
+    });
+    return out;
+  }
+  function table(g) {
+    const T = {}; const teams = new Set(); gmatches(g).forEach(m => { teams.add(m.home); teams.add(m.away); });
+    teams.forEach(t => T[t] = { team: t, P: 0, GF: 0, GA: 0, Pts: 0 }); const played = [];
+    gmatches(g).forEach(m => { if (!isNumv(m.actual_home) || !isNumv(m.actual_away)) return; const h = T[m.home], a = T[m.away], hs = +m.actual_home, as = +m.actual_away;
+      h.P++; a.P++; h.GF += hs; h.GA += as; a.GF += as; a.GA += hs; if (hs > as) h.Pts += 3; else if (hs < as) a.Pts += 3; else { h.Pts++; a.Pts++; } played.push(m); });
+    return rankTeams(Object.values(T).map(t => ({ ...t, GD: t.GF - t.GA })), played);
+  }
+  const started = g => gmatches(g).some(m => isNumv(m.actual_home) && isNumv(m.actual_away));
+  function gpos(g, n) { const mm = gmeta[g] || { mode: "auto" }; if (mm.mode === "manual") return mm["pos" + n] || null;
+    if (!started(g)) return null; const t = table(g)[n - 1]; return t ? t.team : null; }
+  function thirdsRank() { const r = []; GROUPS.forEach(g => { if (started(g)) { const t = table(g)[2]; if (t) r.push({ grp: g, ...t }); } });
+    r.sort((x, y) => y.Pts - x.Pts || y.GD - x.GD || y.GF - x.GF || x.team.localeCompare(y.team)); return r; }
+  function autoThirdGroups() { return thirdsRank().slice(0, 8).map(t => t.grp); }
+  function thirdGroups() { const auto = new Set(autoThirdGroups()); const set = new Set();
+    GROUPS.forEach(g => { const ti = (gmeta[g] || {}).third_in || "auto"; if (ti === "yes") set.add(g); else if (ti === "no") {} else if (auto.has(g)) set.add(g); }); return set; }
+  function parseSlot(text) { if (!text) return { type: "fixed", team: text }; let m;
+    if (m = text.match(/1st Group ([A-L])\b/)) return { type: "pos", grp: m[1], n: 1 };
+    if (m = text.match(/2nd Group ([A-L])\b/)) return { type: "pos", grp: m[1], n: 2 };
+    if (m = text.match(/3rd Group ([A-L/]+)\)/)) return { type: "third", allowed: new Set(m[1].split("/")) };
+    if (m = text.match(/Winner of (\d+)/)) return { type: "winner", id: m[1] };
+    if (m = text.match(/Loser of (\d+)/)) return { type: "loser", id: m[1] };
+    return { type: "fixed", team: text }; }
+  function assignThirds(slots) {
+    const qG = [...thirdGroups()].filter(g => gpos(g, 3)); const slotAssigned = {};
+    function tryA(g, seen) { for (let i = 0; i < slots.length; i++) { if (!slots[i].allowed.has(g) || seen.has(i)) continue; seen.add(i);
+      if (slotAssigned[i] === undefined || tryA(slotAssigned[i], seen)) { slotAssigned[i] = g; return true; } } return false; }
+    qG.forEach(g => tryA(g, new Set()));
+    const res = {}; for (const i in slotAssigned) { const g = slotAssigned[i]; res[slots[i].matchId + "|" + slots[i].side] = gpos(g, 3); } return res; }
+  const slots = []; matches.filter(m => m.stage === "Round Of 32").forEach(m => ["home", "away"].forEach(side => {
+    const p = parseSlot(side === "home" ? m.home : m.away); if (p.type === "third") slots.push({ matchId: m.id, side, allowed: p.allowed }); }));
+  const tA = assignThirds(slots); const memo = {};
+  function winner(id) { const m = byId[id]; if (!m || !isNumv(m.actual_home) || !isNumv(m.actual_away)) return null; const hs = +m.actual_home, as = +m.actual_away; let w = hs > as ? "home" : hs < as ? "away" : ((m.pen_winner || "").toLowerCase() === "home" ? "home" : (m.pen_winner || "").toLowerCase() === "away" ? "away" : null); return w ? resolve(id, w) : null; }
+  function loser(id) { const m = byId[id]; if (!m || !isNumv(m.actual_home) || !isNumv(m.actual_away)) return null; const hs = +m.actual_home, as = +m.actual_away; let l = hs > as ? "away" : hs < as ? "home" : ((m.pen_winner || "").toLowerCase() === "home" ? "away" : (m.pen_winner || "").toLowerCase() === "away" ? "home" : null); return l ? resolve(id, l) : null; }
+  function resolve(id, side) { const k = id + "|" + side; if (k in memo) return memo[k]; memo[k] = null;
+    const m = byId[id]; if (!m) return null; const text = side === "home" ? m.home : m.away; const p = parseSlot(text); let out = null;
+    if (p.type === "fixed") out = p.team; else if (p.type === "pos") out = gpos(p.grp, p.n);
+    else if (p.type === "third") out = tA[k] || null; else if (p.type === "winner") out = winner(p.id); else if (p.type === "loser") out = loser(p.id);
+    memo[k] = out; return out; }
+  return resolve;
+}
 
 async function afGet(path) {
   const r = await fetch(`${AF_BASE}${path}`, { headers: { "x-apisports-key": AF_KEY } });
@@ -88,10 +158,13 @@ async function fetchDetails(fixtureId, homeCode, awayCode) {
   return { events, stats };
 }
 
-// match API-Football fixtures to our matches by FIFA code pair
-export function buildUpdates(fixtures, sbMatches) {
+// match API-Football fixtures to our matches by FIFA code pair (teams resolved via the bracket)
+export function buildUpdates(fixtures, sbMatches, groupMeta) {
+  const resolve = makeResolver(sbMatches, groupMeta);
+  const codeCache = {};
+  const getCodes = m => codeCache[m.id] || (codeCache[m.id] = { h: code(resolve(m.id, "home")), a: code(resolve(m.id, "away")) });
   const byPair = {};
-  sbMatches.forEach(m => { const h = code(m.home), a = code(m.away); if (!h || !a) return; const k = [h, a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); });
+  sbMatches.forEach(m => { const { h, a } = getCodes(m); if (!h || !a) return; const k = [h, a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); });
   const updates = [], unmatched = new Set();
   for (const f of fixtures) {
     const st = f.fixture && f.fixture.status && f.fixture.status.short;
@@ -108,7 +181,7 @@ export function buildUpdates(fixtures, sbMatches) {
     if (!list || !list.length) continue;
     const date = String((f.fixture && f.fixture.date) || "").slice(0, 10);
     const sb = list.length === 1 ? list[0] : list.slice().sort((x, y) => daysApart(x.match_date, date) - daysApart(y.match_date, date))[0];
-    const sbH = code(sb.home), sbA = code(sb.away);
+    const { h: sbH, a: sbA } = getCodes(sb);
     let ah, aa;
     if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
     else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
@@ -125,9 +198,11 @@ async function main() {
   if (!SB_URL || !SB_KEY) { console.error("Missing SUPABASE_URL / SUPABASE_SERVICE_KEY"); process.exit(1); }
   if (!AF_KEY) { console.error("Missing APIFOOTBALL_KEY"); process.exit(1); }
   const fixtures = await afGet(`/fixtures?league=${LEAGUE}&season=${SEASON}`);
-  const sbMatches = await sbGet("matches?select=id,match_date,home,away,actual_home,actual_away,status,minute");
+  const sbMatches = await sbGet("matches?select=id,match_date,stage,home,away,actual_home,actual_away,status,minute,pen_winner");
+  let groupMeta = {};
+  try { const gm = await sbGet("group_meta?select=*"); (gm || []).forEach(r => groupMeta[r.grp] = r); } catch (e) { /* table optional */ }
   console.log(`API-Football: ${fixtures.length} fixtures | DB: ${sbMatches.length} matches`);
-  const updates = buildUpdates(fixtures, sbMatches);
+  const updates = buildUpdates(fixtures, sbMatches, groupMeta);
   if (!updates.length) { console.log("Nothing to update."); return; }
   // 1) Write every score/status/minute FIRST (fast, no per-match API calls), so two
   //    simultaneous live matches never block each other on a slow/limited detail fetch.
