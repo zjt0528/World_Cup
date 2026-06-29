@@ -516,43 +516,73 @@ function computeGroupTable(M,g){
   return rankTeams(arr, played);
 }
 function groupReady(M,g){const ms=gmatches(M,g);return ms.length>0&&ms.every(m=>isNum(m.actual_home)&&isNum(m.actual_away));}
-// "through" = clinched top-2; "out" = can't reach group top-3 even by winning remaining games big
-// (4th can't advance even as a best-3rd). Brute-forces remaining results with full FIFA 2026 tiebreakers.
-function groupStatus(M,g){
-  const teams=groupTeams(M,g), gm=gmatches(M,g);
-  const playedBase=gm.filter(m=>isNum(m.actual_home)&&isNum(m.actual_away));
-  const remaining=gm.filter(m=>!(isNum(m.actual_home)&&isNum(m.actual_away)));
-  const n=Math.min(remaining.length,9), total=Math.pow(3,n);
-  const BIG=99;   // margin big enough to win any goal-difference / goals-for tiebreaker
-  // Final position (0-based) of `focus` for one combination of remaining results.
-  // mask = base-3 per remaining game: 0 home win, 1 away win, 2 draw.
-  // fav=true  -> margins that HELP focus (focus wins big, rivals win small) = focus's BEST finish.
-  // fav=false -> ADVERSARIAL margins (focus wins/loses small/big, rivals win big) = focus's WORST finish.
-  function pos(mask,focus,fav){
-    const scen=playedBase.slice(); let x=mask;
-    for(let i=0;i<n;i++){
-      const r=x%3; x=(x-r)/3; const m=remaining[i]; let hs=0,as=0;
-      if(r===0){ hs=(m.home===focus)?(fav?BIG:1):(fav?1:BIG); as=0; }       // home win
-      else if(r===1){ as=(m.away===focus)?(fav?BIG:1):(fav?1:BIG); hs=0; }  // away win
-      // r===2 -> 0-0 draw
-      scen.push({home:m.home,away:m.away,actual_home:hs,actual_away:as});
-    }
+// Qualification status for EVERY team across all 12 groups (cross-group, STRICT).
+//  "through" = guaranteed to advance under ALL possible remaining results: either
+//      top-2 of its own group, OR mathematically locked into the 8 best 3rd places.
+//  "out"     = can't even reach its group's top 3.
+// Brute-forces remaining results with full FIFA 2026 tiebreakers + adversarial margins.
+function qualStatus(M){
+  const groups=GROUPS(M), BIG=99;
+  const G={}; groups.forEach(g=>{const gm=gmatches(M,g);
+    G[g]={teams:groupTeams(M,g),
+          played:gm.filter(m=>isNum(m.actual_home)&&isNum(m.actual_away)),
+          remaining:gm.filter(m=>!(isNum(m.actual_home)&&isNum(m.actual_away)))};});
+  // Final standings of group g for one remaining-results mask (base-3: 0 home win, 1 away win, 2 draw),
+  // with goal margins skewed to HELP (fav) or HURT (adversarial) `focus`.
+  function standings(g,mask,focus,fav){
+    const {teams,played,remaining}=G[g]; const n=remaining.length; const scen=played.slice(); let x=mask;
+    for(let i=0;i<n;i++){const r=x%3;x=(x-r)/3;const m=remaining[i];let hs=0,as=0;
+      if(r===0){hs=(m.home===focus)?(fav?BIG:1):(fav?1:BIG);as=0;}
+      else if(r===1){as=(m.away===focus)?(fav?BIG:1):(fav?1:BIG);hs=0;}
+      scen.push({home:m.home,away:m.away,actual_home:hs,actual_away:as});}
     const st={}; teams.forEach(z=>st[z]={team:z,Pts:0,GF:0,GA:0,GD:0});
     scen.forEach(m=>{const h=st[m.home],a=st[m.away],hh=+m.actual_home,aa=+m.actual_away;h.GF+=hh;h.GA+=aa;a.GF+=aa;a.GA+=hh;h.GD+=hh-aa;a.GD+=aa-hh;if(hh>aa)h.Pts+=3;else if(hh<aa)a.Pts+=3;else{h.Pts++;a.Pts++;}});
-    return rankTeams(Object.values(st),scen).findIndex(z=>z.team===focus);
+    return rankTeams(Object.values(st),scen);
   }
-  const through={}, canTop3={};
-  teams.forEach(t=>{
-    let best=99, worst=-1;
-    for(let mask=0;mask<total;mask++){
-      const b=pos(mask,t,true);  if(b<best) best=b;     // best case over favorable margins
-      const w=pos(mask,t,false); if(w>worst) worst=w;   // worst case over adversarial margins
-    }
-    through[t]=worst<2;    // STRICT: top-2 in EVERY possible remaining scenario -> clinched
-    canTop3[t]=best<3;     // top-3 still reachable in SOME scenario -> not eliminated
-  });
-  const st={}; teams.forEach(t=>{ st[t]= through[t] ? "through" : (!canTop3[t] ? "out" : ""); });
-  return st;
+  // 3rd-place ranking order: points -> GD -> GF -> name
+  const above=(A,B)=>A.Pts!==B.Pts?A.Pts>B.Pts:A.GD!==B.GD?A.GD>B.GD:A.GF!==B.GF?A.GF>B.GF:A.team.localeCompare(B.team)<0;
+  // Strongest 3rd-place a group can still produce (an adversary trying to outrank some other third).
+  // Finished group -> the actual third (exact). In-progress -> its max possible 3rd-place points.
+  function thirdCeil(g){
+    const {teams,played,remaining}=G[g];
+    if(remaining.length===0){const t=computeGroupTable(M,g)[2];return t?{Pts:t.Pts,GD:t.GD,GF:t.GF,team:t.team,done:true}:null;}
+    const n=Math.min(remaining.length,9),total=Math.pow(3,n);let best=null;
+    for(let mask=0;mask<total;mask++){const st={};teams.forEach(z=>st[z]=0);let x=mask;
+      const games=played.map(m=>[m.home,m.away,+m.actual_home,+m.actual_away]);
+      for(let i=0;i<n;i++){const r=x%3;x=(x-r)/3;const m=remaining[i];if(r===0)games.push([m.home,m.away,1,0]);else if(r===1)games.push([m.home,m.away,0,1]);else games.push([m.home,m.away,0,0]);}
+      games.forEach(([h,a,hs,as])=>{if(hs>as)st[h]+=3;else if(hs<as)st[a]+=3;else{st[h]++;st[a]++;}});
+      const pts=Object.values(st).sort((x,y)=>y-x);if(best===null||pts[2]>best)best=pts[2];}
+    return {Pts:best,inprogress:true};
+  }
+  // Can group g's third outrank record R? Finished -> exact compare. In-progress -> can it reach R's
+  // points (equal points is enough: a third with a remaining game can win the GD/GF tiebreak).
+  const beats=(ceil,R)=>!ceil?false:(ceil.done?above(ceil,R):ceil.Pts>=R.Pts);
+  const thirdCeils={}; groups.forEach(g=>thirdCeils[g]=thirdCeil(g));
+  const status={};
+  groups.forEach(g=>{const {teams,remaining}=G[g];const n=Math.min(remaining.length,9),total=Math.pow(3,n);
+    teams.forEach(t=>{
+      let worstPos=-1,bestPos=99,worst3rd=null,canBe4th=false;
+      for(let mask=0;mask<total;mask++){
+        const adv=standings(g,mask,t,false); const idx=adv.findIndex(z=>z.team===t);
+        if(idx>worstPos)worstPos=idx; if(idx>=3)canBe4th=true;
+        if(idx===2){const r=adv[idx];const R={Pts:r.Pts,GD:r.GD,GF:r.GF,team:r.team};if(worst3rd===null||above(worst3rd,R))worst3rd=R;}
+        const fav=standings(g,mask,t,true); const fi=fav.findIndex(z=>z.team===t); if(fi<bestPos)bestPos=fi;
+      }
+      const top2=worstPos<2, canTop3=bestPos<3;     // top2 = guaranteed >=2nd; canTop3 = can still reach top 3
+      let thirdClinch=false;
+      if(!canBe4th && worst3rd){                     // guaranteed >=3rd and can finish 3rd: check best-thirds
+        let bc=0; groups.forEach(g2=>{ if(g2!==g && beats(thirdCeils[g2],worst3rd)) bc++; });
+        thirdClinch = bc<=7;                         // at most 7 other groups can outrank this third -> top-8 locked
+      }
+      status[t]=(top2||thirdClinch)?"through":(!canTop3?"out":"");
+    });});
+  return status;
+}
+// Per-group view of qualStatus, cached per matches-array so a render computes it once.
+let _qualCache={M:null,res:null};
+function groupStatus(M,g){
+  if(_qualCache.M!==M)_qualCache={M,res:qualStatus(M)};
+  const out={}; groupTeams(M,g).forEach(t=>out[t]=_qualCache.res[t]||""); return out;
 }
 function GROUPS(M){const s=[];M.forEach(m=>{if((m.stage||"").startsWith("Group ")){const g=m.stage.slice(6);if(!s.includes(g))s.push(g);}});return s.sort();}
 function thirdsRank(M){const r=[];GROUPS(M).forEach(g=>{if(groupStarted(M,g)){const t=computeGroupTable(M,g)[2];if(t)r.push({grp:g,...t});}});
