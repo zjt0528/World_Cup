@@ -186,9 +186,14 @@ export function buildUpdates(fixtures, sbMatches, groupMeta) {
     if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
     else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
     else continue;
+    // Penalty shootout result: API keeps goals at the AET score (e.g. 1-1) and reports the
+    // shootout in score.penalty. Record who won, mapped to THIS match's home/away.
+    let penSide = null;
+    if (st === "PEN") { const ps = f.score && f.score.penalty; const ph = ps && ps.home, pa = ps && ps.away;
+      if (ph != null && pa != null && ph !== pa) { const winCode = ph > pa ? hc : ac; penSide = (winCode === sbH) ? "home" : "away"; } }
     const minute = isLive ? (f.fixture.status.elapsed ?? null) : null;
-    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
-    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
+    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute && (sb.pen_winner || null) === penSide) continue;
+    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, pen: penSide, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]${penSide ? " pen:" + penSide : ""}` });
   }
   if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
   return updates;
@@ -207,7 +212,9 @@ async function main() {
   // 1) Write every score/status/minute FIRST (fast, no per-match API calls), so two
   //    simultaneous live matches never block each other on a slow/limited detail fetch.
   for (const u of updates) {
-    await sbPatch(u.id, { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute });
+    const body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
+    if (u.pen != null) body.pen_winner = u.pen;
+    await sbPatch(u.id, body);
     console.log("Score", u.id, "->", u.label);
   }
   // 2) Then fetch + write live details in parallel (best-effort; failures don't stall scores).
