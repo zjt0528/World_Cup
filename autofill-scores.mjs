@@ -158,13 +158,24 @@ async function fetchDetails(fixtureId, homeCode, awayCode) {
   return { events, stats };
 }
 
-// match API-Football fixtures to our matches by FIFA code pair (teams resolved via the bracket)
+// Match API-Football fixtures to our matches. Group games match by FIFA code pair; knockout games
+// match by their reliable (group-position) side and take the REAL opponent + score from the API,
+// because the best-3rd -> Round-of-32 slot assignment can differ from the actual draw.
 export function buildUpdates(fixtures, sbMatches, groupMeta) {
   const resolve = makeResolver(sbMatches, groupMeta);
+  const isThird = t => /3rd Group/i.test(String(t || ""));
+  const isKO = m => !String(m.stage || "").startsWith("Group");
+  // canonical "Name (CODE)" per FIFA code, taken from the group matches (matches the app's naming)
+  const codeToName = {};
+  sbMatches.forEach(m => { if (!isKO(m)) { const ch = code(m.home), ca = code(m.away); if (ch && !codeToName[ch]) codeToName[ch] = m.home; if (ca && !codeToName[ca]) codeToName[ca] = m.away; } });
   const codeCache = {};
-  const getCodes = m => codeCache[m.id] || (codeCache[m.id] = { h: code(resolve(m.id, "home")), a: code(resolve(m.id, "away")) });
-  const byPair = {};
-  sbMatches.forEach(m => { const { h, a } = getCodes(m); if (!h || !a) return; const k = [h, a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); });
+  const info = m => codeCache[m.id] || (codeCache[m.id] = { h: code(resolve(m.id, "home")), a: code(resolve(m.id, "away")), hThird: isThird(m.home), aThird: isThird(m.away) });
+  const byPair = {}, anchor = {};
+  sbMatches.forEach(m => {
+    const r = info(m); const hDef = r.h && !r.hThird, aDef = r.a && !r.aThird;
+    if (hDef && aDef) { const k = [r.h, r.a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); }
+    if (isKO(m)) { if (hDef) (anchor[r.h] = anchor[r.h] || []).push(m); if (aDef) (anchor[r.a] = anchor[r.a] || []).push(m); }
+  });
   const updates = [], unmatched = new Set();
   for (const f of fixtures) {
     const st = f.fixture && f.fixture.status && f.fixture.status.short;
@@ -177,23 +188,32 @@ export function buildUpdates(fixtures, sbMatches, groupMeta) {
     if (!ac) { if (an) unmatched.add(an); continue; }
     const hs = f.goals && f.goals.home, as = f.goals && f.goals.away;
     if (hs == null || as == null) continue;
-    const list = byPair[[hc, ac].sort().join("-")];
-    if (!list || !list.length) continue;
     const date = String((f.fixture && f.fixture.date) || "").slice(0, 10);
-    const sb = list.length === 1 ? list[0] : list.slice().sort((x, y) => daysApart(x.match_date, date) - daysApart(y.match_date, date))[0];
-    const { h: sbH, a: sbA } = getCodes(sb);
-    let ah, aa;
-    if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
-    else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
-    else continue;
-    // Penalty shootout result: API keeps goals at the AET score (e.g. 1-1) and reports the
-    // shootout in score.penalty. Record who won, mapped to THIS match's home/away.
-    let penSide = null;
-    if (st === "PEN") { const ps = f.score && f.score.penalty; const ph = ps && ps.home, pa = ps && ps.away;
-      if (ph != null && pa != null && ph !== pa) { const winCode = ph > pa ? hc : ac; penSide = (winCode === sbH) ? "home" : "away"; } }
+    const cand = [...(byPair[[hc, ac].sort().join("-")] || []), ...(anchor[hc] || []), ...(anchor[ac] || [])];
+    const uniq = [...new Map(cand.map(m => [m.id, m])).values()];
+    if (!uniq.length) continue;
+    const sb = uniq.length === 1 ? uniq[0] : uniq.slice().sort((x, y) => daysApart(x.match_date, date) - daysApart(y.match_date, date))[0];
     const minute = isLive ? (f.fixture.status.elapsed ?? null) : null;
-    if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute && (sb.pen_winner || null) === penSide) continue;
-    updates.push({ id: sb.id, actual_home: ah, actual_away: aa, status: st, minute, pen: penSide, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]${penSide ? " pen:" + penSide : ""}` });
+    if (isKO(sb)) {
+      const r = info(sb); let homeCode, awayCode;
+      if (!r.hThird && r.h) { homeCode = r.h; awayCode = (r.h === hc ? ac : hc); }
+      else if (!r.aThird && r.a) { awayCode = r.a; homeCode = (r.a === hc ? ac : hc); }
+      else continue;
+      if (![hc, ac].includes(homeCode) || ![hc, ac].includes(awayCode) || homeCode === awayCode) continue;
+      const homeName = codeToName[homeCode] || hn, awayName = codeToName[awayCode] || an;
+      const ah = (homeCode === hc ? +hs : +as), aa = (awayCode === hc ? +hs : +as);
+      let penSide = null;
+      if (st === "PEN") { const ps = f.score && f.score.penalty; if (ps && ps.home != null && ps.away != null && ps.home !== ps.away) { const wc = ps.home > ps.away ? hc : ac; penSide = (wc === homeCode) ? "Home" : "Away"; } }
+      if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute && sb.home === homeName && sb.away === awayName && (sb.pen_winner || null) === penSide) continue;
+      updates.push({ id: sb.id, ko: true, home: homeName, away: awayName, actual_home: ah, actual_away: aa, status: st, minute, pen: penSide, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode, awayCode, label: `${homeName} ${ah}-${aa} ${awayName} [${st}]${penSide ? " pen:" + penSide : ""}` });
+    } else {
+      const r = info(sb); const sbH = r.h, sbA = r.a; let ah, aa;
+      if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
+      else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
+      else continue;
+      if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
+      updates.push({ id: sb.id, ko: false, actual_home: ah, actual_away: aa, status: st, minute, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
+    }
   }
   if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
   return updates;
@@ -213,6 +233,7 @@ async function main() {
   //    simultaneous live matches never block each other on a slow/limited detail fetch.
   for (const u of updates) {
     const body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
+    if (u.ko) { body.home = u.home; body.away = u.away; }
     if (u.pen != null) body.pen_winner = u.pen;
     await sbPatch(u.id, body);
     console.log("Score", u.id, "->", u.label);
