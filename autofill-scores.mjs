@@ -176,43 +176,55 @@ export function buildUpdates(fixtures, sbMatches, groupMeta) {
     if (hDef && aDef) { const k = [r.h, r.a].sort().join("-"); (byPair[k] = byPair[k] || []).push(m); }
     if (isKO(m)) { if (hDef) (anchor[r.h] = anchor[r.h] || []).push(m); if (aDef) (anchor[r.a] = anchor[r.a] || []).push(m); }
   });
+  // For a knockout game sb matched to API codes hc/ac, decide which real code is home vs away.
+  const koSides = (sb, hc, ac) => {
+    const r = info(sb); let homeCode, awayCode;
+    if (!r.hThird && r.h) { homeCode = r.h; awayCode = (r.h === hc ? ac : hc); }
+    else if (!r.aThird && r.a) { awayCode = r.a; homeCode = (r.a === hc ? ac : hc); }
+    else return null;
+    if (![hc, ac].includes(homeCode) || ![hc, ac].includes(awayCode) || homeCode === awayCode) return null;
+    return { homeCode, awayCode };
+  };
   const updates = [], unmatched = new Set();
   for (const f of fixtures) {
     const st = f.fixture && f.fixture.status && f.fixture.status.short;
     const isFinal = FINISHED.has(st), isLive = LIVE.has(st);
-    if (!isFinal && !isLive) continue;
     const hn = f.teams && f.teams.home && f.teams.home.name;
     const an = f.teams && f.teams.away && f.teams.away.name;
     const hc = codeOfName(hn), ac = codeOfName(an);
     if (!hc) { if (hn) unmatched.add(hn); continue; }
     if (!ac) { if (an) unmatched.add(an); continue; }
-    const hs = f.goals && f.goals.home, as = f.goals && f.goals.away;
-    if (hs == null || as == null) continue;
     const date = String((f.fixture && f.fixture.date) || "").slice(0, 10);
     const cand = [...(byPair[[hc, ac].sort().join("-")] || []), ...(anchor[hc] || []), ...(anchor[ac] || [])];
     const uniq = [...new Map(cand.map(m => [m.id, m])).values()];
     if (!uniq.length) continue;
     const sb = uniq.length === 1 ? uniq[0] : uniq.slice().sort((x, y) => daysApart(x.match_date, date) - daysApart(y.match_date, date))[0];
     const minute = isLive ? (f.fixture.status.elapsed ?? null) : null;
-    if (isKO(sb)) {
-      const r = info(sb); let homeCode, awayCode;
-      if (!r.hThird && r.h) { homeCode = r.h; awayCode = (r.h === hc ? ac : hc); }
-      else if (!r.aThird && r.a) { awayCode = r.a; homeCode = (r.a === hc ? ac : hc); }
-      else continue;
-      if (![hc, ac].includes(homeCode) || ![hc, ac].includes(awayCode) || homeCode === awayCode) continue;
+    if (isFinal || isLive) {
+      const hs = f.goals && f.goals.home, as = f.goals && f.goals.away;
+      if (hs == null || as == null) continue;
+      if (isKO(sb)) {
+        const s = koSides(sb, hc, ac); if (!s) continue; const { homeCode, awayCode } = s;
+        const homeName = codeToName[homeCode] || hn, awayName = codeToName[awayCode] || an;
+        const ah = (homeCode === hc ? +hs : +as), aa = (awayCode === hc ? +hs : +as);
+        let penSide = null;
+        if (st === "PEN") { const ps = f.score && f.score.penalty; if (ps && ps.home != null && ps.away != null && ps.home !== ps.away) { const wc = ps.home > ps.away ? hc : ac; penSide = (wc === homeCode) ? "Home" : "Away"; } }
+        if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute && sb.home === homeName && sb.away === awayName && (sb.pen_winner || null) === penSide) continue;
+        updates.push({ id: sb.id, ko: true, home: homeName, away: awayName, actual_home: ah, actual_away: aa, status: st, minute, pen: penSide, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode, awayCode, label: `${homeName} ${ah}-${aa} ${awayName} [${st}]${penSide ? " pen:" + penSide : ""}` });
+      } else {
+        const r = info(sb); const sbH = r.h, sbA = r.a; let ah, aa;
+        if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
+        else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
+        else continue;
+        if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
+        updates.push({ id: sb.id, ko: false, actual_home: ah, actual_away: aa, status: st, minute, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
+      }
+    } else if (isKO(sb)) {
+      // Upcoming knockout fixture whose draw is set: write the real teams so the bracket PREVIEW is exact.
+      const s = koSides(sb, hc, ac); if (!s) continue; const { homeCode, awayCode } = s;
       const homeName = codeToName[homeCode] || hn, awayName = codeToName[awayCode] || an;
-      const ah = (homeCode === hc ? +hs : +as), aa = (awayCode === hc ? +hs : +as);
-      let penSide = null;
-      if (st === "PEN") { const ps = f.score && f.score.penalty; if (ps && ps.home != null && ps.away != null && ps.home !== ps.away) { const wc = ps.home > ps.away ? hc : ac; penSide = (wc === homeCode) ? "Home" : "Away"; } }
-      if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute && sb.home === homeName && sb.away === awayName && (sb.pen_winner || null) === penSide) continue;
-      updates.push({ id: sb.id, ko: true, home: homeName, away: awayName, actual_home: ah, actual_away: aa, status: st, minute, pen: penSide, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode, awayCode, label: `${homeName} ${ah}-${aa} ${awayName} [${st}]${penSide ? " pen:" + penSide : ""}` });
-    } else {
-      const r = info(sb); const sbH = r.h, sbA = r.a; let ah, aa;
-      if (sbH === hc && sbA === ac) { ah = +hs; aa = +as; }
-      else if (sbH === ac && sbA === hc) { ah = +as; aa = +hs; }
-      else continue;
-      if (String(sb.actual_home) === String(ah) && String(sb.actual_away) === String(aa) && sb.status === st && (sb.minute ?? null) === minute) continue;
-      updates.push({ id: sb.id, ko: false, actual_home: ah, actual_away: aa, status: st, minute, live: isLive, fixtureId: f.fixture && f.fixture.id, homeCode: sbH, awayCode: sbA, label: `${hc} ${ah}-${aa} ${ac} [${st}]` });
+      if (sb.home === homeName && sb.away === awayName) continue;
+      updates.push({ id: sb.id, ko: true, teamsOnly: true, home: homeName, away: awayName, live: false, label: `draw: ${homeName} vs ${awayName}` });
     }
   }
   if (unmatched.size) console.log("Note: unrecognized team names (tell me to add them):", [...unmatched].join(", "));
@@ -232,11 +244,15 @@ async function main() {
   // 1) Write every score/status/minute FIRST (fast, no per-match API calls), so two
   //    simultaneous live matches never block each other on a slow/limited detail fetch.
   for (const u of updates) {
-    const body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
-    if (u.ko) { body.home = u.home; body.away = u.away; }
-    if (u.pen != null) body.pen_winner = u.pen;
+    let body;
+    if (u.teamsOnly) { body = { home: u.home, away: u.away }; }
+    else {
+      body = { actual_home: u.actual_home, actual_away: u.actual_away, status: u.status, minute: u.minute };
+      if (u.ko) { body.home = u.home; body.away = u.away; }
+      if (u.pen != null) body.pen_winner = u.pen;
+    }
     await sbPatch(u.id, body);
-    console.log("Score", u.id, "->", u.label);
+    console.log(u.teamsOnly ? "Draw" : "Score", u.id, "->", u.label);
   }
   // 2) Then fetch + write live details in parallel (best-effort; failures don't stall scores).
   const live = updates.filter(u => u.live);
